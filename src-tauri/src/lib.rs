@@ -1,10 +1,15 @@
 use std::sync::{Arc, Mutex};
 
+use tracing::debug;
+
 use arboard::Clipboard;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde_json::json;
-use tauri::{menu::{Menu, MenuItem, PredefinedMenuItem, Submenu}, Emitter, State};
+use tauri::{
+    Emitter, State,
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+};
 
 struct RecordingHandle {
     samples: Arc<Mutex<Vec<f32>>>,
@@ -77,8 +82,21 @@ async fn stop_and_transcribe(state: State<'_, AppState>) -> Result<String, Strin
         return Err("No audio recorded".to_string());
     }
 
-    let wav_bytes = encode_wav(&samples, handle.sample_rate, handle.channels)
-        .map_err(|e| e.to_string())?;
+    let wav_bytes =
+        encode_wav(&samples, handle.sample_rate, handle.channels).map_err(|e| e.to_string())?;
+
+    if std::env::var("HENRY_WHISPER_DEBUG_AUDIO").as_deref() == Ok("1") {
+        let dir = std::path::Path::new("/tmp/henry-whisper");
+        std::fs::create_dir_all(dir).ok();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let path = dir.join(format!("{ts}.wav"));
+        std::fs::write(&path, &wav_bytes).ok();
+        debug!(path = %path.display(), "saved debug audio");
+    }
+
     let audio_b64 = BASE64.encode(&wav_bytes);
 
     let api_key = state.api_key.lock().unwrap().clone();
@@ -122,6 +140,7 @@ async fn stop_and_transcribe(state: State<'_, AppState>) -> Result<String, Strin
         .trim()
         .to_string();
 
+    debug!(transcript = %transcript, "transcription result");
     Ok(transcript)
 }
 
@@ -172,6 +191,10 @@ fn encode_wav(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     let api_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
 
     tauri::Builder::default()
@@ -181,30 +204,56 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let quit = MenuItem::with_id(app, "quit", "Quit Henry Whisper", true, Some("CmdOrCtrl+Q"))?;
+            let quit =
+                MenuItem::with_id(app, "quit", "Quit Henry Whisper", true, Some("CmdOrCtrl+Q"))?;
             let sep1 = PredefinedMenuItem::separator(app)?;
-            let settings = MenuItem::with_id(app, "settings", "Settings...", true, Some("CmdOrCtrl+Comma"))?;
+            let settings = MenuItem::with_id(
+                app,
+                "settings",
+                "Settings...",
+                true,
+                Some("CmdOrCtrl+Comma"),
+            )?;
             let file = Submenu::with_items(app, "File", true, &[&settings, &sep1, &quit])?;
 
-            let record_start = MenuItem::with_id(app, "record_start", "Start Recording", true, Some("CmdOrCtrl+R"))?;
-            let record_stop = MenuItem::with_id(app, "record_stop", "Stop & Transcribe", true, Some("CmdOrCtrl+T"))?;
+            let record_start = MenuItem::with_id(
+                app,
+                "record_start",
+                "Start Recording",
+                true,
+                Some("CmdOrCtrl+R"),
+            )?;
+            let record_stop = MenuItem::with_id(
+                app,
+                "record_stop",
+                "Stop & Transcribe",
+                true,
+                Some("CmdOrCtrl+T"),
+            )?;
             let sep2 = PredefinedMenuItem::separator(app)?;
-            let copy = MenuItem::with_id(app, "copy_transcript", "Copy Transcript", true, Some("CmdOrCtrl+Shift+C"))?;
+            let copy = MenuItem::with_id(
+                app,
+                "copy_transcript",
+                "Copy Transcript",
+                true,
+                Some("CmdOrCtrl+Shift+C"),
+            )?;
             let clear = MenuItem::with_id(app, "clear_transcript", "Clear", true, None::<&str>)?;
-            let record = Submenu::with_items(app, "Record", true, &[
-                &record_start, &record_stop, &sep2, &copy, &clear,
-            ])?;
+            let record = Submenu::with_items(
+                app,
+                "Record",
+                true,
+                &[&record_start, &record_stop, &sep2, &copy, &clear],
+            )?;
 
             let menu = Menu::with_items(app, &[&file, &record])?;
             app.set_menu(menu)?;
             Ok(())
         })
-        .on_menu_event(|app, event| {
-            match event.id().as_ref() {
-                "quit" => app.exit(0),
-                id => {
-                    let _ = app.emit(id, ());
-                }
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "quit" => app.exit(0),
+            id => {
+                let _ = app.emit(id, ());
             }
         })
         .invoke_handler(tauri::generate_handler![
