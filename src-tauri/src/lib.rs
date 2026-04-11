@@ -5,11 +5,65 @@ use tracing::debug;
 use arboard::Clipboard;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{
-    Emitter, State,
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    Manager,
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::TrayIconBuilder,
 };
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AppSettings {
+    pub api_key: String,
+    pub recording_shortcut: String,
+    pub transcribe_shortcut: String,
+    pub play_sound: bool,
+    pub show_notification: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
+            recording_shortcut: "CmdOrCtrl+Shift+R".to_string(),
+            transcribe_shortcut: "CmdOrCtrl+Shift+T".to_string(),
+            play_sound: true,
+            show_notification: true,
+        }
+    }
+}
+
+fn settings_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    app.path()
+        .app_config_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("settings.json")
+}
+
+fn load_settings(app: &tauri::AppHandle) -> AppSettings {
+    let path = settings_path(app);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn persist_settings(app: &tauri::AppHandle, settings: &AppSettings) {
+    let path = settings_path(app);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    if let Ok(json) = serde_json::to_string_pretty(settings) {
+        std::fs::write(&path, json).ok();
+    }
+}
+
+// ── App state ─────────────────────────────────────────────────────────────────
 
 struct RecordingHandle {
     samples: Arc<Mutex<Vec<f32>>>,
@@ -20,11 +74,54 @@ struct RecordingHandle {
 
 struct AppState {
     recording: Mutex<Option<RecordingHandle>>,
-    api_key: Mutex<String>,
+    settings: Mutex<AppSettings>,
 }
 
-#[tauri::command]
-fn start_recording(state: State<'_, AppState>) -> Result<(), String> {
+// ── Tray helpers ──────────────────────────────────────────────────────────────
+
+fn set_tray_title(app: &tauri::AppHandle, title: Option<&str>) {
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_title(Some(title.unwrap_or("Henry Whisper")));
+    }
+}
+
+// ── Global shortcuts ──────────────────────────────────────────────────────────
+
+fn register_shortcuts(app: &tauri::AppHandle, rec: &str, tx: &str) {
+    let gs = app.global_shortcut();
+    gs.unregister_all().ok();
+
+    if let Err(e) = gs.on_shortcut(rec, |app, _, event| {
+        if event.state == ShortcutState::Pressed {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = do_start_recording(app).await {
+                    eprintln!("start_recording: {e}");
+                }
+            });
+        }
+    }) {
+        eprintln!("Failed to register recording shortcut '{rec}': {e}");
+    }
+
+    if let Err(e) = gs.on_shortcut(tx, |app, _, event| {
+        if event.state == ShortcutState::Pressed {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = do_stop_and_transcribe(app).await {
+                    eprintln!("stop_and_transcribe: {e}");
+                }
+            });
+        }
+    }) {
+        eprintln!("Failed to register transcribe shortcut '{tx}': {e}");
+    }
+}
+
+// ── Core logic ────────────────────────────────────────────────────────────────
+
+async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
     let mut recording = state.recording.lock().unwrap();
     if recording.is_some() {
         return Err("Already recording".to_string());
@@ -64,21 +161,35 @@ fn start_recording(state: State<'_, AppState>) -> Result<(), String> {
         sample_rate,
         channels,
     });
+    drop(recording);
+
+    let settings = state.settings.lock().unwrap().clone();
+
+    if settings.play_sound {
+        let _ = std::process::Command::new("afplay")
+            .arg("/System/Library/Sounds/Glass.aiff")
+            .status();
+    }
+
+    set_tray_title(&app, Some("Recording..."));
     Ok(())
 }
 
-#[tauri::command]
-async fn stop_and_transcribe(state: State<'_, AppState>) -> Result<String, String> {
+async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<AppState>();
+
     let handle = {
         let mut recording = state.recording.lock().unwrap();
         recording.take().ok_or("Not currently recording")?
     };
 
     handle.stop_tx.send(()).ok();
+    set_tray_title(&app, Some("Recording..."));
     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
     let samples = handle.samples.lock().unwrap().clone();
     if samples.is_empty() {
+        set_tray_title(&app, None);
         return Err("No audio recorded".to_string());
     }
 
@@ -99,9 +210,10 @@ async fn stop_and_transcribe(state: State<'_, AppState>) -> Result<String, Strin
 
     let audio_b64 = BASE64.encode(&wav_bytes);
 
-    let api_key = state.api_key.lock().unwrap().clone();
+    let api_key = state.settings.lock().unwrap().api_key.clone();
     if api_key.is_empty() {
-        return Err("API key not configured. Go to File → Settings.".to_string());
+        set_tray_title(&app, None);
+        return Err("API key not configured. Open Settings from the tray.".to_string());
     }
 
     let client = reqwest::Client::new();
@@ -131,6 +243,7 @@ async fn stop_and_transcribe(state: State<'_, AppState>) -> Result<String, Strin
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
     if let Some(err) = body.get("error") {
+        set_tray_title(&app, None);
         return Err(format!("API error: {err}"));
     }
 
@@ -141,29 +254,75 @@ async fn stop_and_transcribe(state: State<'_, AppState>) -> Result<String, Strin
         .to_string();
 
     debug!(transcript = %transcript, "transcription result");
+
+    // Always copy to clipboard
+    if let Ok(mut cb) = Clipboard::new() {
+        let _ = cb.set_text(&transcript);
+    }
+
+    let settings = state.settings.lock().unwrap().clone();
+
+    if settings.show_notification && !transcript.is_empty() {
+        let _ = app
+            .notification()
+            .builder()
+            .title("Transcribed")
+            .body(&transcript)
+            .show();
+    }
+
+    if settings.play_sound {
+        let _ = std::process::Command::new("afplay")
+            .arg("/System/Library/Sounds/Glass.aiff")
+            .status();
+    }
+    set_tray_title(&app, None);
     Ok(transcript)
 }
 
+// ── Commands ──────────────────────────────────────────────────────────────────
+
 #[tauri::command]
-fn copy_to_clipboard(text: String) -> Result<(), String> {
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(&text).map_err(|e| e.to_string())?;
-    let _ = std::process::Command::new("afplay")
-        .arg("/System/Library/Sounds/Glass.aiff")
-        .status();
+async fn start_recording(app: tauri::AppHandle) -> Result<(), String> {
+    do_start_recording(app).await
+}
+
+#[tauri::command]
+async fn stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String> {
+    do_stop_and_transcribe(app).await
+}
+
+#[tauri::command]
+fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
+    state.settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn save_settings(
+    app: tauri::AppHandle,
+    settings: AppSettings,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let rec = settings.recording_shortcut.clone();
+    let tx = settings.transcribe_shortcut.clone();
+    *state.settings.lock().unwrap() = settings.clone();
+    persist_settings(&app, &settings);
+    register_shortcuts(&app, &rec, &tx);
+    if let Some(window) = app.get_webview_window("main") {
+        window.hide().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
 #[tauri::command]
-fn set_api_key(key: String, state: State<'_, AppState>) -> Result<(), String> {
-    *state.api_key.lock().unwrap() = key;
+fn hide_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.hide().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
-#[tauri::command]
-fn get_api_key(state: State<'_, AppState>) -> String {
-    state.api_key.lock().unwrap().clone()
-}
+// ── WAV encoding ──────────────────────────────────────────────────────────────
 
 fn encode_wav(
     samples: &[f32],
@@ -189,79 +348,110 @@ fn encode_wav(
     Ok(buf)
 }
 
+// ── Entry point ───────────────────────────────────────────────────────────────
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let api_key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
-
     tauri::Builder::default()
-        .manage(AppState {
-            recording: Mutex::new(None),
-            api_key: Mutex::new(api_key),
-        })
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            let quit =
-                MenuItem::with_id(app, "quit", "Quit Henry Whisper", true, Some("CmdOrCtrl+Q"))?;
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Load persisted settings
+            let settings = load_settings(app.handle());
+            app.manage(AppState {
+                recording: Mutex::new(None),
+                settings: Mutex::new(settings.clone()),
+            });
+
+            // Build tray context menu
+            let record_start =
+                MenuItem::with_id(app, "record_start", "Start Recording", true, None::<&str>)?;
+            let record_stop =
+                MenuItem::with_id(app, "record_stop", "Stop & Transcribe", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
-            let settings = MenuItem::with_id(
-                app,
-                "settings",
-                "Settings...",
-                true,
-                Some("CmdOrCtrl+Comma"),
-            )?;
-            let file = Submenu::with_items(app, "File", true, &[&settings, &sep1, &quit])?;
-
-            let record_start = MenuItem::with_id(
-                app,
-                "record_start",
-                "Start Recording",
-                true,
-                Some("CmdOrCtrl+R"),
-            )?;
-            let record_stop = MenuItem::with_id(
-                app,
-                "record_stop",
-                "Stop & Transcribe",
-                true,
-                Some("CmdOrCtrl+T"),
-            )?;
+            let settings_item =
+                MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
-            let copy = MenuItem::with_id(
+            let quit = MenuItem::with_id(app, "quit", "Quit Henry Whisper", true, None::<&str>)?;
+
+            let menu = Menu::with_items(
                 app,
-                "copy_transcript",
-                "Copy Transcript",
-                true,
-                Some("CmdOrCtrl+Shift+C"),
-            )?;
-            let clear = MenuItem::with_id(app, "clear_transcript", "Clear", true, None::<&str>)?;
-            let record = Submenu::with_items(
-                app,
-                "Record",
-                true,
-                &[&record_start, &record_stop, &sep2, &copy, &clear],
+                &[
+                    &record_start,
+                    &record_stop,
+                    &sep1,
+                    &settings_item,
+                    &sep2,
+                    &quit,
+                ],
             )?;
 
-            let menu = Menu::with_items(app, &[&file, &record])?;
-            app.set_menu(menu)?;
-            Ok(())
-        })
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "quit" => app.exit(0),
-            id => {
-                let _ = app.emit(id, ());
+            TrayIconBuilder::with_id("main")
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => app.exit(0),
+                    "settings" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    "record_start" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = do_start_recording(app).await {
+                                eprintln!("start_recording: {e}");
+                            }
+                        });
+                    }
+                    "record_stop" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = do_stop_and_transcribe(app).await {
+                                eprintln!("stop_and_transcribe: {e}");
+                            }
+                        });
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+
+            // Closing the settings window hides it instead of quitting
+            if let Some(win) = app.get_webview_window("main") {
+                let win2 = win.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        win2.hide().ok();
+                        api.prevent_close();
+                    }
+                });
             }
+
+            // Register global shortcuts
+            register_shortcuts(
+                app.handle(),
+                &settings.recording_shortcut,
+                &settings.transcribe_shortcut,
+            );
+
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             start_recording,
             stop_and_transcribe,
-            copy_to_clipboard,
-            set_api_key,
-            get_api_key,
+            get_settings,
+            save_settings,
+            hide_settings_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

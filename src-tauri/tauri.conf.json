@@ -13,9 +13,13 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "henry-whisper",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Henry Whisper — Settings",
+        "width": 440,
+        "height": 400,
+        "visible": false,
+        "resizable": false,
+        "center": true
       }
     ],
     "security": {
