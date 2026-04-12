@@ -13,7 +13,6 @@ use tracing::debug;
 
 use crate::audio::SoundEffect;
 use crate::audio::encode_wav;
-use crate::audio::play_sound;
 use crate::state::AppState;
 use crate::state::RecordingHandle;
 use crate::tray::set_tray_title;
@@ -88,7 +87,7 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
     if settings.play_sound {
-        play_sound(SoundEffect::Record);
+        state.audio.play(SoundEffect::Record);
     }
 
     set_tray_title(&app, Some("Recording..."));
@@ -105,6 +104,11 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
     set_tray_title(&app, Some("Transcribing..."));
     handle.stop_tx.send(()).ok();
     handle.join_handle.await.ok();
+
+    let settings = state.settings.lock().unwrap().clone();
+    if settings.play_sound {
+        state.audio.play(SoundEffect::TranscribeStart);
+    }
 
     let samples = handle.samples.lock().unwrap().clone();
     if samples.is_empty() {
@@ -179,8 +183,6 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
         let _ = cb.set_text(&transcript);
     }
 
-    let settings = state.settings.lock().unwrap().clone();
-
     if settings.show_notification && !transcript.is_empty() {
         let _ = app
             .notification()
@@ -191,7 +193,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
     }
 
     if settings.play_sound {
-        play_sound(SoundEffect::Transcribe);
+        state.audio.play(SoundEffect::Transcribe);
     }
     set_tray_title(&app, None);
     Ok(())
@@ -208,7 +210,7 @@ pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
     handle.join_handle.await.ok();
     let settings = state.settings.lock().unwrap().clone();
     if settings.play_sound {
-        play_sound(SoundEffect::Cancel);
+        state.audio.play(SoundEffect::Cancel);
     }
     Ok(())
 }

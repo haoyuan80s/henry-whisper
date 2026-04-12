@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use crate::audio::AudioPlayer;
 use crate::settings::AppSettings;
 
 pub struct RecordingHandle {
@@ -14,4 +15,5 @@ pub struct RecordingHandle {
 pub struct AppState {
     pub recording: Mutex<Option<RecordingHandle>>,
     pub settings: Mutex<AppSettings>,
+    pub audio: AudioPlayer,
 }

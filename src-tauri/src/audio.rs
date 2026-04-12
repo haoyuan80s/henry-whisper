@@ -1,7 +1,10 @@
+use std::io::Cursor;
+use std::sync::mpsc;
 use std::thread;
 
 pub enum SoundEffect {
     Record,
+    TranscribeStart,
     Transcribe,
     Cancel,
 }
@@ -10,32 +13,43 @@ impl SoundEffect {
     fn bytes(&self) -> &'static [u8] {
         match self {
             SoundEffect::Record => include_bytes!("../resources/record.wav"),
+            SoundEffect::TranscribeStart => include_bytes!("../resources/transcribe_start.wav"),
             SoundEffect::Transcribe => include_bytes!("../resources/transcribe.wav"),
             SoundEffect::Cancel => include_bytes!("../resources/cancel.wav"),
         }
     }
 }
 
-pub fn play_sound(effect: SoundEffect) {
-    thread::spawn(move || {
-        let mut device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[play_sound] open_default_sink failed: {e}");
-                return;
+pub struct AudioPlayer {
+    tx: mpsc::Sender<SoundEffect>,
+}
+
+impl AudioPlayer {
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel::<SoundEffect>();
+        thread::spawn(move || {
+            let mut device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[AudioPlayer] open_default_sink failed: {e}");
+                    return;
+                }
+            };
+            device_sink.log_on_drop(false);
+            for effect in rx {
+                let cursor = Cursor::new(effect.bytes());
+                match rodio::play(device_sink.mixer(), cursor) {
+                    Ok(player) => player.sleep_until_end(),
+                    Err(e) => eprintln!("[AudioPlayer] play failed: {e}"),
+                }
             }
-        };
-        device_sink.log_on_drop(false);
-        let cursor = std::io::Cursor::new(effect.bytes());
-        let player = match rodio::play(device_sink.mixer(), cursor) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("[play_sound] play failed: {e}");
-                return;
-            }
-        };
-        player.sleep_until_end();
-    });
+        });
+        Self { tx }
+    }
+
+    pub fn play(&self, effect: SoundEffect) {
+        let _ = self.tx.send(effect);
+    }
 }
 
 pub fn encode_wav(

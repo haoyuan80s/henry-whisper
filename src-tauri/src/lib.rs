@@ -6,6 +6,7 @@ mod shortcuts;
 mod state;
 mod tray;
 
+use audio::AudioPlayer;
 use recording::do_start_recording;
 use recording::do_stop_and_transcribe;
 use settings::load_settings;
@@ -40,6 +41,7 @@ pub fn run() {
             app.manage(AppState {
                 recording: Mutex::new(None),
                 settings: Mutex::new(settings.clone()),
+                audio: AudioPlayer::new(),
             });
 
             // Build tray context menu
