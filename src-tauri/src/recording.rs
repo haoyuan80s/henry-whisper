@@ -149,7 +149,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
                 "content": [
                     {
                         "type": "text",
-                        "text": r#"Transcribe the audio exactly as spoken. Return only the spoken words—no commentary, speaker labels, timestamps, or explanations. If no voice is audible, output exactly: `don't hear`"#
+                        "text": r#"You are a transcription engine. Return only the spoken words from the audio. Do not add any preface, suffix, explanation, label, markdown, or quotation marks. If no voice is audible, return exactly: don't hear"#
                     },
                     {
                         "type": "input_audio",
@@ -187,6 +187,19 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
     }
     set_tray_title(&app, None);
     Ok(())
+}
+
+pub async fn do_record_or_transcribe(app: tauri::AppHandle) -> Result<(), String> {
+    let is_recording = {
+        let state = app.state::<AppState>();
+        state.recording.lock().unwrap().is_some()
+    };
+
+    if is_recording {
+        do_stop_and_transcribe(app).await
+    } else {
+        do_start_recording(app).await
+    }
 }
 
 pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {

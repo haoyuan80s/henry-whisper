@@ -17,14 +17,13 @@ pub fn save_settings(
     settings: AppSettings,
 ) -> Result<(), String> {
     let rec = settings.recording_shortcut.clone();
-    let tx = settings.transcribe_shortcut.clone();
     let cancel = settings.cancel_shortcut.clone();
     *state.settings.lock().unwrap() = settings.clone();
     persist_settings(&app, &settings);
     // Re-register shortcuts on the async runtime so we don't block the IPC
     // response (macOS Carbon APIs dispatch to the main thread internally).
     tauri::async_runtime::spawn(async move {
-        register_shortcuts(&app, &rec, &tx, &cancel);
+        register_shortcuts(&app, &rec, &cancel);
     });
     Ok(())
 }

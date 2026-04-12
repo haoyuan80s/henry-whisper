@@ -2,10 +2,9 @@ use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::recording::do_cancel_recording;
-use crate::recording::do_start_recording;
-use crate::recording::do_stop_and_transcribe;
+use crate::recording::do_record_or_transcribe;
 
-pub fn register_shortcuts(app: &tauri::AppHandle, rec: &str, tx: &str, cancel: &str) {
+pub fn register_shortcuts(app: &tauri::AppHandle, rec: &str, cancel: &str) {
     let gs = app.global_shortcut();
     gs.unregister_all().ok();
 
@@ -13,26 +12,13 @@ pub fn register_shortcuts(app: &tauri::AppHandle, rec: &str, tx: &str, cancel: &
         if event.state == ShortcutState::Pressed {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = do_start_recording(app).await {
-                    eprintln!("start_recording: {e}");
+                if let Err(e) = do_record_or_transcribe(app).await {
+                    eprintln!("record_or_transcribe: {e}");
                 }
             });
         }
     }) {
-        eprintln!("Failed to register recording shortcut '{rec}': {e}");
-    }
-
-    if let Err(e) = gs.on_shortcut(tx, |app, _, event| {
-        if event.state == ShortcutState::Pressed {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = do_stop_and_transcribe(app).await {
-                    eprintln!("stop_and_transcribe: {e}");
-                }
-            });
-        }
-    }) {
-        eprintln!("Failed to register transcribe shortcut '{tx}': {e}");
+        eprintln!("Failed to register record/transcribe shortcut '{rec}': {e}");
     }
 
     if let Err(e) = gs.on_shortcut(cancel, |app, _, event| {
@@ -45,6 +31,6 @@ pub fn register_shortcuts(app: &tauri::AppHandle, rec: &str, tx: &str, cancel: &
             });
         }
     }) {
-        eprintln!("Failed to register transcribe shortcut '{tx}': {e}");
+        eprintln!("Failed to register cancel shortcut '{cancel}': {e}");
     }
 }

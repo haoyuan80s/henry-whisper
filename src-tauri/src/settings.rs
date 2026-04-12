@@ -2,11 +2,12 @@ use serde::Deserialize;
 use serde::Serialize;
 use tauri::Manager;
 
+const DEFAULT_RECORD_TRANSCRIBE_SHORTCUT: &str = "CmdOrCtrl+Shift+R";
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub api_key: String,
     pub recording_shortcut: String,
-    pub transcribe_shortcut: String,
     pub cancel_shortcut: String,
     pub play_sound: bool,
 }
@@ -14,9 +15,8 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
-            recording_shortcut: "CmdOrCtrl+Shift+R".to_string(),
-            transcribe_shortcut: "CmdOrCtrl+Shift+T".to_string(),
+            api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
+            recording_shortcut: DEFAULT_RECORD_TRANSCRIBE_SHORTCUT.to_string(),
             cancel_shortcut: "CmdOrCtrl+Shift+C".to_string(),
             play_sound: true,
         }
@@ -34,7 +34,10 @@ pub fn load_settings(app: &tauri::AppHandle) -> AppSettings {
     let path = settings_path(app);
     std::fs::read_to_string(&path)
         .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|s| {
+            let value: serde_json::Value = serde_json::from_str(&s).ok()?;
+            serde_json::from_value(value).ok()
+        })
         .unwrap_or_default()
 }
 

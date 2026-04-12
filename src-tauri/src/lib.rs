@@ -7,8 +7,7 @@ mod state;
 mod tray;
 
 use audio::AudioPlayer;
-use recording::do_start_recording;
-use recording::do_stop_and_transcribe;
+use recording::do_record_or_transcribe;
 use settings::load_settings;
 use shortcuts::register_shortcuts;
 use state::AppState;
@@ -44,9 +43,8 @@ pub fn run() {
             });
 
             // Build tray context menu
-            let record = MenuItem::with_id(app, "record", "Record", true, None::<&str>)?;
-            let transcribe =
-                MenuItem::with_id(app, "transcribe", "Transcribe", true, None::<&str>)?;
+            let record =
+                MenuItem::with_id(app, "record", "Record / Transcribe", true, None::<&str>)?;
             let cancel = MenuItem::with_id(app, "cancel", "Cancel", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
             let settings_item = MenuItem::with_id(app, "settings", "Setting", true, None::<&str>)?;
@@ -55,20 +53,10 @@ pub fn run() {
 
             let menu = Menu::with_items(
                 app,
-                &[
-                    &record,
-                    &transcribe,
-                    &cancel,
-                    &sep1,
-                    &settings_item,
-                    &sep2,
-                    &quit,
-                ],
+                &[&record, &cancel, &sep1, &settings_item, &sep2, &quit],
             )?;
             let tray_icon =
                 tauri::image::Image::new(include_bytes!("../icons/tray-icon.rgba"), 64, 64);
-
-            let _ = cancel; // declared but not added to menu (preserved from original)
 
             TrayIconBuilder::with_id("main")
                 .icon(tray_icon)
@@ -87,8 +75,8 @@ pub fn run() {
                     "record" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Err(e) = do_start_recording(app).await {
-                                eprintln!("start_recording: {e}");
+                            if let Err(e) = do_record_or_transcribe(app).await {
+                                eprintln!("record_or_transcribe: {e}");
                             }
                         });
                     }
@@ -96,15 +84,7 @@ pub fn run() {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
                             if let Err(e) = do_cancel_recording(app).await {
-                                eprintln!("start_recording: {e}");
-                            }
-                        });
-                    }
-                    "transcribe" => {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            if let Err(e) = do_stop_and_transcribe(app).await {
-                                eprintln!("stop_and_transcribe: {e}");
+                                eprintln!("do_cancel_recording: {e}");
                             }
                         });
                     }
@@ -127,7 +107,6 @@ pub fn run() {
             register_shortcuts(
                 app.handle(),
                 &settings.recording_shortcut,
-                &settings.transcribe_shortcut,
                 &settings.cancel_shortcut,
             );
 

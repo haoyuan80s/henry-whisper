@@ -14,7 +14,6 @@ extern "C" {
 struct AppSettings {
     api_key: String,
     recording_shortcut: String,
-    transcribe_shortcut: String,
     cancel_shortcut: String,
     play_sound: bool,
 }
@@ -104,7 +103,6 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
 pub fn App() -> impl IntoView {
     let (api_key, set_api_key) = signal(String::new());
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
-    let (tx_shortcut, set_tx_shortcut) = signal(String::new());
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
     let (play_sound, set_play_sound) = signal(true);
     let (saving, set_saving) = signal(false);
@@ -117,7 +115,6 @@ pub fn App() -> impl IntoView {
                 if let Ok(s) = serde_wasm_bindgen::from_value::<AppSettings>(val) {
                     set_api_key.set(s.api_key);
                     set_rec_shortcut.set(s.recording_shortcut);
-                    set_tx_shortcut.set(s.transcribe_shortcut);
                     set_cancel_shortcut.set(s.cancel_shortcut);
                     set_play_sound.set(s.play_sound);
                 }
@@ -131,7 +128,6 @@ pub fn App() -> impl IntoView {
         let s = AppSettings {
             api_key: api_key.get_untracked(),
             recording_shortcut: rec_shortcut.get_untracked(),
-            transcribe_shortcut: tx_shortcut.get_untracked(),
             cancel_shortcut: cancel_shortcut.get_untracked(),
             play_sound: play_sound.get_untracked(),
         };
@@ -173,13 +169,8 @@ pub fn App() -> impl IntoView {
             </div>
 
             <div class="field">
-                <label class="label">"Recording Shortcut"</label>
+                <label class="label">"Record / Transcribe Shortcut"</label>
                 <ShortcutRecorder value=rec_shortcut set_value=set_rec_shortcut />
-            </div>
-
-            <div class="field">
-                <label class="label">"Transcribe Shortcut"</label>
-                <ShortcutRecorder value=tx_shortcut set_value=set_tx_shortcut />
             </div>
 
             <div class="field">
