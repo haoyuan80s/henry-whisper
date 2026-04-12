@@ -19,9 +19,13 @@ use crate::tray::set_tray_title;
 
 pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let mut recording = state.recording.lock().unwrap();
-    if recording.is_some() {
-        return Err("Already recording".to_string());
+
+    // Check without holding the guard across an await point.
+    {
+        let recording = state.recording.lock().unwrap();
+        if recording.is_some() {
+            return Err("Already recording".to_string());
+        }
     }
 
     let host = cpal::default_host();
@@ -35,32 +39,45 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let samples: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
     let samples_cb = samples.clone();
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
 
     let join_handle = tokio::task::spawn_blocking(move || {
-        let stream = device
-            .build_input_stream(
-                &config.into(),
-                move |data: &[f32], _| {
-                    samples_cb.lock().unwrap().extend_from_slice(data);
-                },
-                |err| eprintln!("Stream error: {err}"),
-                None,
-            )
-            .expect("Failed to build input stream");
-        stream.play().expect("Failed to start stream");
+        let stream = match device.build_input_stream(
+            &config.into(),
+            move |data: &[f32], _| {
+                samples_cb.lock().unwrap().extend_from_slice(data);
+            },
+            |err| eprintln!("Stream error: {err}"),
+            None,
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = ready_tx.send(Err(e.to_string()));
+                return;
+            }
+        };
+        match stream.play() {
+            Ok(()) => { let _ = ready_tx.send(Ok(())); }
+            Err(e) => { let _ = ready_tx.send(Err(e.to_string())); return; }
+        }
         stop_rx.blocking_recv().ok();
         drop(stream);
-        // 所有 samples 已写完，任务结束
     });
 
-    *recording = Some(RecordingHandle {
+    // Wait until the stream is actually playing before reporting success.
+    // This is critical for Bluetooth devices (AirPods) where stream
+    // initialization takes 300–800 ms — without this wait the tray shows
+    // "Recording…" before any audio is being captured and the first words
+    // get silently dropped.
+    ready_rx.await.map_err(|_| "Recording thread crashed".to_string())??;
+
+    *state.recording.lock().unwrap() = Some(RecordingHandle {
         samples,
         stop_tx,
         join_handle,
         sample_rate,
         channels,
     });
-    drop(recording);
 
     let settings = state.settings.lock().unwrap().clone();
 
