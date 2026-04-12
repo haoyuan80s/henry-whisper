@@ -133,8 +133,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::start_recording,
-            commands::stop_and_transcribe,
             commands::get_settings,
             commands::save_settings,
             commands::hide_settings_window,

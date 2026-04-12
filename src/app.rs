@@ -21,6 +21,87 @@ struct AppSettings {
 }
 
 #[component]
+fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -> impl IntoView {
+    let (recording, set_recording) = signal(false);
+
+    let handle_keydown = move |ev: web_sys::KeyboardEvent| {
+        ev.prevent_default();
+        ev.stop_propagation();
+
+        let key = ev.key();
+
+        // Ignore bare modifier key presses
+        if matches!(
+            key.as_str(),
+            "Meta" | "Control" | "Shift" | "Alt" | "CapsLock" | "Tab"
+        ) {
+            return;
+        }
+
+        // Escape cancels without saving
+        if key == "Escape" {
+            set_recording.set(false);
+            return;
+        }
+
+        let meta = ev.meta_key();
+        let ctrl = ev.ctrl_key();
+        let shift = ev.shift_key();
+        let alt = ev.alt_key();
+
+        // Require at least one modifier
+        if !meta && !ctrl && !shift && !alt {
+            return;
+        }
+
+        let mut parts: Vec<String> = Vec::new();
+        if meta || ctrl {
+            parts.push("CmdOrCtrl".to_string());
+        }
+        if shift {
+            parts.push("Shift".to_string());
+        }
+        if alt {
+            parts.push("Alt".to_string());
+        }
+
+        let main_key = match key.as_str() {
+            " " => "Space".to_string(),
+            k if k.len() == 1 => k.to_uppercase(),
+            k => k.to_string(), // F1–F12, ArrowUp, etc.
+        };
+        parts.push(main_key);
+
+        set_value.set(parts.join("+"));
+        set_recording.set(false);
+    };
+
+    view! {
+        <input
+            class="input shortcut-recorder"
+            class:is-recording=move || recording.get()
+            type="text"
+            readonly=true
+            prop:value=move || {
+                if recording.get() {
+                    "Press shortcut…".to_string()
+                } else {
+                    let v = value.get();
+                    if v.is_empty() { "Click to record…".to_string() } else { v }
+                }
+            }
+            on:focus=move |_| set_recording.set(true)
+            on:keydown=move |ev| {
+                if recording.get_untracked() {
+                    handle_keydown(ev);
+                }
+            }
+            on:blur=move |_| set_recording.set(false)
+        />
+    }
+}
+
+#[component]
 pub fn App() -> impl IntoView {
     let (api_key, set_api_key) = signal(String::new());
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
@@ -61,14 +142,16 @@ pub fn App() -> impl IntoView {
         spawn_local(async move {
             let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "settings": s })).unwrap();
             match invoke("save_settings", args).await {
-                Ok(_) => {}
+                Ok(_) => {
+                    let _ = invoke("hide_settings_window", JsValue::NULL).await;
+                }
                 Err(e) => {
                     set_error.set(Some(
                         e.as_string().unwrap_or("Error saving settings".into()),
                     ));
-                    set_saving.set(false);
                 }
             }
+            set_saving.set(false);
         });
     };
 
@@ -95,35 +178,17 @@ pub fn App() -> impl IntoView {
 
             <div class="field">
                 <label class="label">"Recording Shortcut"</label>
-                <input
-                    class="input"
-                    type="text"
-                    placeholder="CmdOrCtrl+Shift+R"
-                    prop:value=move || rec_shortcut.get()
-                    on:input=move |ev| set_rec_shortcut.set(event_target_value(&ev))
-                />
+                <ShortcutRecorder value=rec_shortcut set_value=set_rec_shortcut />
             </div>
 
             <div class="field">
                 <label class="label">"Transcribe Shortcut"</label>
-                <input
-                    class="input"
-                    type="text"
-                    placeholder="CmdOrCtrl+Shift+T"
-                    prop:value=move || tx_shortcut.get()
-                    on:input=move |ev| set_tx_shortcut.set(event_target_value(&ev))
-                />
+                <ShortcutRecorder value=tx_shortcut set_value=set_tx_shortcut />
             </div>
 
             <div class="field">
                 <label class="label">"Cancel Shortcut"</label>
-                <input
-                    class="input"
-                    type="text"
-                    placeholder="CmdOrCtrl+Shift+C"
-                    prop:value=move || cancel_shortcut.get()
-                    on:input=move |ev| set_cancel_shortcut.set(event_target_value(&ev))
-                />
+                <ShortcutRecorder value=cancel_shortcut set_value=set_cancel_shortcut />
             </div>
 
             <div class="field toggle-field">

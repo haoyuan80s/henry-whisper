@@ -81,6 +81,21 @@ body {
 }
 .input:focus { border-color: var(--text-muted); }
 
+/* Shortcut recorder */
+.shortcut-recorder {
+  cursor: pointer;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+.shortcut-recorder.is-recording {
+  border-color: #3b82f6;
+  color: var(--text-muted);
+  animation: pulse-border 1s ease-in-out infinite;
+}
+@keyframes pulse-border {
+  0%, 100% { border-color: #3b82f6; }
+  50% { border-color: #93c5fd; }
+}
+
 /* Toggle switch */
 .toggle {
   position: relative;

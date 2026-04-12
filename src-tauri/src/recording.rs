@@ -20,8 +20,6 @@ use crate::tray::set_tray_title;
 
 pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-
-    // Check without holding the guard across an await point.
     {
         let recording = state.recording.lock().unwrap();
         if recording.is_some() {
@@ -97,15 +95,14 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String> {
-    set_tray_title(&app, Some("Transcribing..."));
+pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-
     let handle = {
         let mut recording = state.recording.lock().unwrap();
         recording.take().ok_or("Not currently recording")?
     };
 
+    set_tray_title(&app, Some("Transcribing..."));
     handle.stop_tx.send(()).ok();
     handle.join_handle.await.ok();
 
@@ -197,26 +194,21 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, Str
         play_sound(SoundEffect::Transcribe);
     }
     set_tray_title(&app, None);
-    Ok(transcript)
+    Ok(())
 }
 
 pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
-    set_tray_title(&app, None);
     let state = app.state::<AppState>();
-
     let handle = {
         let mut recording = state.recording.lock().unwrap();
         recording.take().ok_or("Not currently recording")?
     };
-
+    set_tray_title(&app, None);
     handle.stop_tx.send(()).ok();
     handle.join_handle.await.ok();
-
     let settings = state.settings.lock().unwrap().clone();
-
     if settings.play_sound {
         play_sound(SoundEffect::Cancel);
     }
-
     Ok(())
 }
