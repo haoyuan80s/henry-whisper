@@ -11,6 +11,7 @@ use tauri::Manager;
 use tauri_plugin_notification::NotificationExt;
 use tracing::debug;
 
+use crate::audio::SoundEffect;
 use crate::audio::encode_wav;
 use crate::audio::play_sound;
 use crate::state::AppState;
@@ -57,8 +58,13 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
             }
         };
         match stream.play() {
-            Ok(()) => { let _ = ready_tx.send(Ok(())); }
-            Err(e) => { let _ = ready_tx.send(Err(e.to_string())); return; }
+            Ok(()) => {
+                let _ = ready_tx.send(Ok(()));
+            }
+            Err(e) => {
+                let _ = ready_tx.send(Err(e.to_string()));
+                return;
+            }
         }
         stop_rx.blocking_recv().ok();
         drop(stream);
@@ -69,7 +75,9 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     // initialization takes 300–800 ms — without this wait the tray shows
     // "Recording…" before any audio is being captured and the first words
     // get silently dropped.
-    ready_rx.await.map_err(|_| "Recording thread crashed".to_string())??;
+    ready_rx
+        .await
+        .map_err(|_| "Recording thread crashed".to_string())??;
 
     *state.recording.lock().unwrap() = Some(RecordingHandle {
         samples,
@@ -82,7 +90,7 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
     if settings.play_sound {
-        play_sound();
+        play_sound(SoundEffect::Record);
     }
 
     set_tray_title(&app, Some("Recording..."));
@@ -186,7 +194,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, Str
     }
 
     if settings.play_sound {
-        play_sound();
+        play_sound(SoundEffect::Transcribe);
     }
     set_tray_title(&app, None);
     Ok(transcript)
@@ -203,6 +211,12 @@ pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
 
     handle.stop_tx.send(()).ok();
     handle.join_handle.await.ok();
+
+    let settings = state.settings.lock().unwrap().clone();
+
+    if settings.play_sound {
+        play_sound(SoundEffect::Cancel);
+    }
 
     Ok(())
 }

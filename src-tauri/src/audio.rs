@@ -1,9 +1,23 @@
 use std::thread;
 
-pub static NOTIFICATION_SOUND: &[u8] = include_bytes!("../resources/notification.wav");
+pub enum SoundEffect {
+    Record,
+    Transcribe,
+    Cancel,
+}
 
-pub fn play_sound() {
-    thread::spawn(|| {
+impl SoundEffect {
+    fn bytes(&self) -> &'static [u8] {
+        match self {
+            SoundEffect::Record => include_bytes!("../resources/record.wav"),
+            SoundEffect::Transcribe => include_bytes!("../resources/transcribe.wav"),
+            SoundEffect::Cancel => include_bytes!("../resources/cancel.wav"),
+        }
+    }
+}
+
+pub fn play_sound(effect: SoundEffect) {
+    thread::spawn(move || {
         let mut device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
             Ok(s) => s,
             Err(e) => {
@@ -12,7 +26,7 @@ pub fn play_sound() {
             }
         };
         device_sink.log_on_drop(false);
-        let cursor = std::io::Cursor::new(NOTIFICATION_SOUND);
+        let cursor = std::io::Cursor::new(effect.bytes());
         let player = match rodio::play(device_sink.mixer(), cursor) {
             Ok(p) => p,
             Err(e) => {
