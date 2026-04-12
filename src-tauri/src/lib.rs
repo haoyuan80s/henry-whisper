@@ -64,11 +64,14 @@ pub fn run() {
                     &quit,
                 ],
             )?;
+            let tray_icon =
+                tauri::image::Image::new(include_bytes!("../icons/tray-icon.rgba"), 64, 64);
 
             let _ = cancel; // declared but not added to menu (preserved from original)
 
             TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
+                .icon_as_template(true)
                 .title(DEFAULT_TRAY_TITLE)
                 .menu(&menu)
                 .show_menu_on_left_click(true)
