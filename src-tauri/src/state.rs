@@ -1,0 +1,17 @@
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use crate::settings::AppSettings;
+
+pub struct RecordingHandle {
+    pub samples: Arc<Mutex<Vec<f32>>>,
+    pub stop_tx: tokio::sync::oneshot::Sender<()>,
+    pub join_handle: tokio::task::JoinHandle<()>,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+pub struct AppState {
+    pub recording: Mutex<Option<RecordingHandle>>,
+    pub settings: Mutex<AppSettings>,
+}
