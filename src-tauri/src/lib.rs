@@ -127,6 +127,7 @@ pub fn run() {
                 app.handle(),
                 &settings.recording_shortcut,
                 &settings.transcribe_shortcut,
+                &settings.cancel_shortcut,
             );
 
             Ok(())

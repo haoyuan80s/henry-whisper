@@ -16,3 +16,9 @@ console_error_panic_hook = "0.1.7"
 
 [workspace]
 members = ["src-tauri"]
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

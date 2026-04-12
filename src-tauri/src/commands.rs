@@ -30,9 +30,10 @@ pub fn save_settings(
 ) -> Result<(), String> {
     let rec = settings.recording_shortcut.clone();
     let tx = settings.transcribe_shortcut.clone();
+    let cancel = settings.cancel_shortcut.clone();
     *state.settings.lock().unwrap() = settings.clone();
     persist_settings(&app, &settings);
-    register_shortcuts(&app, &rec, &tx);
+    register_shortcuts(&app, &rec, &tx, &cancel);
     if let Some(window) = app.get_webview_window("main") {
         window.hide().map_err(|e| e.to_string())?;
     }
