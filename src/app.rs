@@ -15,6 +15,7 @@ struct AppSettings {
     api_key: String,
     recording_shortcut: String,
     transcribe_shortcut: String,
+    cancel_shortcut: String,
     play_sound: bool,
     show_notification: bool,
 }
@@ -24,6 +25,7 @@ pub fn App() -> impl IntoView {
     let (api_key, set_api_key) = signal(String::new());
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
     let (tx_shortcut, set_tx_shortcut) = signal(String::new());
+    let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
     let (play_sound, set_play_sound) = signal(true);
     let (show_notif, set_show_notif) = signal(true);
     let (saving, set_saving) = signal(false);
@@ -37,6 +39,7 @@ pub fn App() -> impl IntoView {
                     set_api_key.set(s.api_key);
                     set_rec_shortcut.set(s.recording_shortcut);
                     set_tx_shortcut.set(s.transcribe_shortcut);
+                    set_cancel_shortcut.set(s.cancel_shortcut);
                     set_play_sound.set(s.play_sound);
                     set_show_notif.set(s.show_notification);
                 }
@@ -51,6 +54,7 @@ pub fn App() -> impl IntoView {
             api_key: api_key.get_untracked(),
             recording_shortcut: rec_shortcut.get_untracked(),
             transcribe_shortcut: tx_shortcut.get_untracked(),
+            cancel_shortcut: cancel_shortcut.get_untracked(),
             play_sound: play_sound.get_untracked(),
             show_notification: show_notif.get_untracked(),
         };
@@ -108,6 +112,17 @@ pub fn App() -> impl IntoView {
                     placeholder="CmdOrCtrl+Shift+T"
                     prop:value=move || tx_shortcut.get()
                     on:input=move |ev| set_tx_shortcut.set(event_target_value(&ev))
+                />
+            </div>
+
+            <div class="field">
+                <label class="label">"Cancel Shortcut"</label>
+                <input
+                    class="input"
+                    type="text"
+                    placeholder="CmdOrCtrl+Shift+C"
+                    prop:value=move || cancel_shortcut.get()
+                    on:input=move |ev| set_cancel_shortcut.set(event_target_value(&ev))
                 />
             </div>
 

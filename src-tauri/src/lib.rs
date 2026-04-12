@@ -48,7 +48,7 @@ pub fn run() {
                 MenuItem::with_id(app, "transcribe", "Transcribe", true, None::<&str>)?;
             let cancel = MenuItem::with_id(app, "cancel", "Cancel", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
-            let settings_item = MenuItem::with_id(app, "settingss", "Setting", true, None::<&str>)?;
+            let settings_item = MenuItem::with_id(app, "settings", "Setting", true, None::<&str>)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
