@@ -8,7 +8,6 @@ use serde_json::json;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
-use tauri_plugin_notification::NotificationExt;
 use tracing::debug;
 
 use crate::audio::SoundEffect;
@@ -144,13 +143,13 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
         .post("https://openrouter.ai/api/v1/chat/completions")
         .header("Authorization", format!("Bearer {api_key}"))
         .json(&json!({
-            "model": "google/gemini-3.1-flash-lite-preview",
+            "model": "openai/gpt-audio-mini",
             "messages": [{
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": "Transcribe this audio exactly. Output only the spoken words, with no extra commentary, labels, or formatting. If no voice is audible, output exactly: don't hear"
+                        "text": r#"Transcribe the audio exactly as spoken. Return only the spoken words—no commentary, speaker labels, timestamps, or explanations. If no voice is audible, output exactly: `don't hear`"#
                     },
                     {
                         "type": "input_audio",
@@ -181,15 +180,6 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
     // Always copy to clipboard
     if let Ok(mut cb) = Clipboard::new() {
         let _ = cb.set_text(&transcript);
-    }
-
-    if settings.show_notification && !transcript.is_empty() {
-        let _ = app
-            .notification()
-            .builder()
-            .title("Transcribed")
-            .body(&transcript)
-            .show();
     }
 
     if settings.play_sound {

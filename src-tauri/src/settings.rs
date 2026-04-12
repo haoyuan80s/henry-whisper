@@ -9,18 +9,16 @@ pub struct AppSettings {
     pub transcribe_shortcut: String,
     pub cancel_shortcut: String,
     pub play_sound: bool,
-    pub show_notification: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or_default(),
+            api_key: std::env::var("GEMINI_API_KEY").unwrap_or_default(),
             recording_shortcut: "CmdOrCtrl+Shift+R".to_string(),
             transcribe_shortcut: "CmdOrCtrl+Shift+T".to_string(),
             cancel_shortcut: "CmdOrCtrl+Shift+C".to_string(),
             play_sound: true,
-            show_notification: true,
         }
     }
 }

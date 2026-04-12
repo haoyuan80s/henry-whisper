@@ -13,7 +13,7 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
+    let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
 
     println!("Press Enter to start recording...");
     wait_for_enter();
@@ -54,26 +54,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wav_bytes = encode_wav(&samples, sample_rate, channels)?;
     let audio_b64 = BASE64.encode(&wav_bytes);
 
-    // Call OpenRouter
+    // Call Gemini directly
     let client = reqwest::Client::new();
     let resp = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {api_key}"))
+        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent")
+        .header("x-goog-api-key", api_key)
         .json(&json!({
-            "model": "xiaomi/mimo-v2-omni",
-            "messages": [{
-                "role": "user",
-                "content": [
+            "contents": [{
+                "parts": [
                     {
-                        "type": "text",
                         "text": "Transcribe this audio exactly. Output only the transcription, no extra commentary."
                     },
                     {
-                        "type": "input_audio",
-                        "input_audio": { "data": audio_b64, "format": "wav" }
+                        "inline_data": {
+                            "mime_type": "audio/wav",
+                            "data": audio_b64
+                        }
                     }
                 ]
-            }]
+            }],
+            "generationConfig": {
+                "temperature": 0,
+                "maxOutputTokens": 256
+            }
         }))
         .send()
         .await?;
@@ -85,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let transcript = body["choices"][0]["message"]["content"]
+    let transcript = body["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
         .unwrap_or("")
         .trim()
