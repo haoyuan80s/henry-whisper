@@ -1,19 +1,24 @@
-use std::sync::{Arc, Mutex};
-
-use tracing::debug;
-
 use arboard::Clipboard;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use serde::{Deserialize, Serialize};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use cpal::traits::DeviceTrait;
+use cpal::traits::HostTrait;
+use cpal::traits::StreamTrait;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
-use tauri::{
-    Manager,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::TrayIconBuilder,
-};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
+use tauri::Manager;
+use tauri::menu::Menu;
+use tauri::menu::MenuItem;
+use tauri::menu::PredefinedMenuItem;
+use tauri::tray::TrayIconBuilder;
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_notification::NotificationExt;
+use tracing::debug;
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
@@ -67,7 +72,8 @@ fn persist_settings(app: &tauri::AppHandle, settings: &AppSettings) {
 
 struct RecordingHandle {
     samples: Arc<Mutex<Vec<f32>>>,
-    stop_tx: std::sync::mpsc::SyncSender<()>,
+    stop_tx: tokio::sync::oneshot::Sender<()>,
+    join_handle: tokio::task::JoinHandle<()>,
     sample_rate: u32,
     channels: u16,
 }
@@ -75,6 +81,32 @@ struct RecordingHandle {
 struct AppState {
     recording: Mutex<Option<RecordingHandle>>,
     settings: Mutex<AppSettings>,
+}
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+
+static NOTIFICATION_SOUND: &[u8] = include_bytes!("../resources/notification.wav");
+
+fn play_sound() {
+    thread::spawn(|| {
+        let mut device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[play_sound] open_default_sink failed: {e}");
+                return;
+            }
+        };
+        device_sink.log_on_drop(false);
+        let cursor = std::io::Cursor::new(NOTIFICATION_SOUND);
+        let player = match rodio::play(device_sink.mixer(), cursor) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[play_sound] play failed: {e}");
+                return;
+            }
+        };
+        player.sleep_until_end();
+    });
 }
 
 // ── Tray helpers ──────────────────────────────────────────────────────────────
@@ -108,7 +140,7 @@ fn register_shortcuts(app: &tauri::AppHandle, rec: &str, tx: &str) {
         if event.state == ShortcutState::Pressed {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = do_stop_and_transcribe(app).await {
+                if let Err(e) = do_stop_and_transcribe(&app).await {
                     eprintln!("stop_and_transcribe: {e}");
                 }
             });
@@ -137,9 +169,9 @@ async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
 
     let samples: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
     let samples_cb = samples.clone();
-    let (stop_tx, stop_rx) = std::sync::mpsc::sync_channel(1);
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
 
-    std::thread::spawn(move || {
+    let join_handle = tokio::task::spawn_blocking(move || {
         let stream = device
             .build_input_stream(
                 &config.into(),
@@ -151,13 +183,15 @@ async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
             )
             .expect("Failed to build input stream");
         stream.play().expect("Failed to start stream");
-        stop_rx.recv().ok();
+        stop_rx.blocking_recv().ok();
         drop(stream);
+        // 所有 samples 已写完，任务结束
     });
 
     *recording = Some(RecordingHandle {
         samples,
         stop_tx,
+        join_handle,
         sample_rate,
         channels,
     });
@@ -166,16 +200,15 @@ async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
     if settings.play_sound {
-        let _ = std::process::Command::new("afplay")
-            .arg("/System/Library/Sounds/Glass.aiff")
-            .status();
+        play_sound();
     }
 
     set_tray_title(&app, Some("Recording..."));
     Ok(())
 }
 
-async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String> {
+async fn do_stop_and_transcribe(app: &tauri::AppHandle) -> Result<String, String> {
+    set_tray_title(app, Some("Transcribing..."));
     let state = app.state::<AppState>();
 
     let handle = {
@@ -184,12 +217,11 @@ async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String>
     };
 
     handle.stop_tx.send(()).ok();
-    set_tray_title(&app, Some("Recording..."));
-    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    handle.join_handle.await.ok();
 
     let samples = handle.samples.lock().unwrap().clone();
     if samples.is_empty() {
-        set_tray_title(&app, None);
+        set_tray_title(app, None);
         return Err("No audio recorded".to_string());
     }
 
@@ -212,7 +244,7 @@ async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String>
 
     let api_key = state.settings.lock().unwrap().api_key.clone();
     if api_key.is_empty() {
-        set_tray_title(&app, None);
+        set_tray_title(app, None);
         return Err("API key not configured. Open Settings from the tray.".to_string());
     }
 
@@ -221,13 +253,13 @@ async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String>
         .post("https://openrouter.ai/api/v1/chat/completions")
         .header("Authorization", format!("Bearer {api_key}"))
         .json(&json!({
-            "model": "xiaomi/mimo-v2-omni",
+            "model": "google/gemini-3.1-flash-lite-preview",
             "messages": [{
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": "Transcribe this audio exactly. Output only the transcription, no extra commentary."
+                        "text": "Transcribe this audio exactly. Output only the spoken words, with no extra commentary, labels, or formatting. If no voice is audible, output exactly: don't hear"
                     },
                     {
                         "type": "input_audio",
@@ -243,7 +275,7 @@ async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String>
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
     if let Some(err) = body.get("error") {
-        set_tray_title(&app, None);
+        set_tray_title(app, None);
         return Err(format!("API error: {err}"));
     }
 
@@ -272,11 +304,9 @@ async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String>
     }
 
     if settings.play_sound {
-        let _ = std::process::Command::new("afplay")
-            .arg("/System/Library/Sounds/Glass.aiff")
-            .status();
+        play_sound();
     }
-    set_tray_title(&app, None);
+    set_tray_title(app, None);
     Ok(transcript)
 }
 
@@ -289,7 +319,8 @@ async fn start_recording(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn stop_and_transcribe(app: tauri::AppHandle) -> Result<String, String> {
-    do_stop_and_transcribe(app).await
+    let transcribe = do_stop_and_transcribe(&app).await?;
+    Ok(transcribe)
 }
 
 #[tauri::command]
@@ -372,10 +403,11 @@ pub fn run() {
             });
 
             // Build tray context menu
-            let record_start =
-                MenuItem::with_id(app, "record_start", "Start Recording", true, None::<&str>)?;
-            let record_stop =
-                MenuItem::with_id(app, "record_stop", "Stop & Transcribe", true, None::<&str>)?;
+            let record = MenuItem::with_id(app, "record", "record", true, None::<&str>)?;
+            let transcribe =
+                MenuItem::with_id(app, "transcribe", "transcribe", true, None::<&str>)?;
+
+            let cancel = MenuItem::with_id(app, "transcribe", "cancel", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
             let settings_item =
                 MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
@@ -384,18 +416,12 @@ pub fn run() {
 
             let menu = Menu::with_items(
                 app,
-                &[
-                    &record_start,
-                    &record_stop,
-                    &sep1,
-                    &settings_item,
-                    &sep2,
-                    &quit,
-                ],
+                &[&record, &transcribe, &sep1, &settings_item, &sep2, &quit],
             )?;
 
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
+                .title("Henry Whisper")
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -406,7 +432,7 @@ pub fn run() {
                             let _ = win.set_focus();
                         }
                     }
-                    "record_start" => {
+                    "record" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
                             if let Err(e) = do_start_recording(app).await {
@@ -414,10 +440,18 @@ pub fn run() {
                             }
                         });
                     }
-                    "record_stop" => {
+                    "cancel" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Err(e) = do_stop_and_transcribe(app).await {
+                            if let Err(e) = do_start_recording(app).await {
+                                eprintln!("start_recording: {e}");
+                            }
+                        });
+                    }
+                    "transcribe" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = do_stop_and_transcribe(&app).await {
                                 eprintln!("stop_and_transcribe: {e}");
                             }
                         });

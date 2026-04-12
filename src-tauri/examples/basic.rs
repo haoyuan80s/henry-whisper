@@ -1,11 +1,14 @@
-use std::{
-    io::{self, Write},
-    sync::{Arc, Mutex},
-};
+use std::io::Write;
+use std::io::{self};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use arboard::Clipboard;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use cpal::traits::DeviceTrait;
+use cpal::traits::HostTrait;
+use cpal::traits::StreamTrait;
 use serde_json::json;
 
 #[tokio::main]

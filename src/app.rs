@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -54,13 +55,13 @@ pub fn App() -> impl IntoView {
             show_notification: show_notif.get_untracked(),
         };
         spawn_local(async move {
-            let args =
-                serde_wasm_bindgen::to_value(&serde_json::json!({ "settings": s })).unwrap();
+            let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "settings": s })).unwrap();
             match invoke("save_settings", args).await {
                 Ok(_) => {}
                 Err(e) => {
-                    set_error
-                        .set(Some(e.as_string().unwrap_or("Error saving settings".into())));
+                    set_error.set(Some(
+                        e.as_string().unwrap_or("Error saving settings".into()),
+                    ));
                     set_saving.set(false);
                 }
             }
