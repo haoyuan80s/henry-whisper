@@ -5,7 +5,6 @@ use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
 use serde_json::json;
-use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::Manager;
 use tracing::debug;
@@ -15,6 +14,13 @@ use crate::audio::encode_wav;
 use crate::state::AppState;
 use crate::state::RecordingHandle;
 use crate::tray::set_tray_title;
+
+const VOICE_THRESHOLD: f32 = 0.0001;
+
+fn rms(data: &[f32]) -> f32 {
+    let sum = data.iter().map(|x| x * x).sum::<f32>();
+    (sum / data.len() as f32).sqrt()
+}
 
 pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
@@ -33,50 +39,48 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     let sample_rate = config.sample_rate();
     let channels = config.channels() as u16;
 
-    let samples: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
-    let samples_cb = samples.clone();
+    let (sample_tx, sample_rx) = crossbeam_channel::unbounded::<Vec<f32>>();
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
 
     let join_handle = tokio::task::spawn_blocking(move || {
-        let stream = match device.build_input_stream(
-            &config.into(),
-            move |data: &[f32], _| {
-                samples_cb.lock().unwrap().extend_from_slice(data);
-            },
-            |err| eprintln!("Stream error: {err}"),
-            None,
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                let _ = ready_tx.send(Err(e.to_string()));
-                return;
-            }
-        };
-        match stream.play() {
-            Ok(()) => {
-                let _ = ready_tx.send(Ok(()));
-            }
-            Err(e) => {
-                let _ = ready_tx.send(Err(e.to_string()));
-                return;
-            }
-        }
+        let ready_tx = Mutex::new(Some(ready_tx));
+        let warmed_up = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let warmed_up_cb = warmed_up.clone();
+
+        let stream = device
+            .build_input_stream(
+                &config.into(),
+                move |data: &[f32], _| {
+                    if !warmed_up_cb.load(std::sync::atomic::Ordering::Relaxed) {
+                        if rms(data) < VOICE_THRESHOLD {
+                            return;
+                        }
+                        warmed_up_cb.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    let _ = sample_tx.send(data.to_vec());
+
+                    // Signal ready on first frame past the threshold
+                    if let Some(tx) = ready_tx.lock().unwrap().take() {
+                        let _ = tx.send(Ok(()));
+                    }
+                },
+                |err| eprintln!("Stream error: {err}"),
+                None,
+            )
+            .unwrap();
+        stream.play().unwrap();
         stop_rx.blocking_recv().ok();
         drop(stream);
     });
 
-    // Wait until the stream is actually playing before reporting success.
-    // This is critical for Bluetooth devices (AirPods) where stream
-    // initialization takes 300–800 ms — without this wait the tray shows
-    // "Recording…" before any audio is being captured and the first words
-    // get silently dropped.
     ready_rx
         .await
         .map_err(|_| "Recording thread crashed".to_string())??;
 
     *state.recording.lock().unwrap() = Some(RecordingHandle {
-        samples,
+        sample_rx,
         stop_tx,
         join_handle,
         sample_rate,
@@ -109,7 +113,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
         state.audio.play(SoundEffect::TranscribeStart);
     }
 
-    let samples = handle.samples.lock().unwrap().clone();
+    let samples: Vec<f32> = handle.sample_rx.try_iter().flatten().collect();
     if samples.is_empty() {
         set_tray_title(&app, None);
         return Err("No audio recorded".to_string());
@@ -146,10 +150,11 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
             "model": "openai/gpt-audio-mini",
             "messages": [{
                 "role": "user",
+                "temperature": 0,
                 "content": [
                     {
                         "type": "text",
-                        "text": r#"You are a transcription engine. Return only the spoken words from the audio. Do not add any preface, suffix, explanation, label, markdown, or quotation marks. If no voice is audible, return exactly: don't hear"#
+                        "text": r#"You are a transcription engine. Return only the spoken words. If no voice is audible, return exactly: don't hear"#
                     },
                     {
                         "type": "input_audio",
