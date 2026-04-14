@@ -13,6 +13,8 @@ extern "C" {
 #[derive(Clone, Serialize, Deserialize)]
 struct AppSettings {
     api_key: String,
+    base_url: String,
+    transcription_model: String,
     recording_shortcut: String,
     cancel_shortcut: String,
     play_sound: bool,
@@ -102,6 +104,8 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
 #[component]
 pub fn App() -> impl IntoView {
     let (api_key, set_api_key) = signal(String::new());
+    let (base_url, set_base_url) = signal(String::new());
+    let (transcription_model, set_transcription_model) = signal(String::new());
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
     let (play_sound, set_play_sound) = signal(true);
@@ -114,6 +118,8 @@ pub fn App() -> impl IntoView {
             if let Ok(val) = invoke("get_settings", JsValue::NULL).await {
                 if let Ok(s) = serde_wasm_bindgen::from_value::<AppSettings>(val) {
                     set_api_key.set(s.api_key);
+                    set_base_url.set(s.base_url);
+                    set_transcription_model.set(s.transcription_model);
                     set_rec_shortcut.set(s.recording_shortcut);
                     set_cancel_shortcut.set(s.cancel_shortcut);
                     set_play_sound.set(s.play_sound);
@@ -127,6 +133,8 @@ pub fn App() -> impl IntoView {
         set_saving.set(true);
         let s = AppSettings {
             api_key: api_key.get_untracked(),
+            base_url: base_url.get_untracked(),
+            transcription_model: transcription_model.get_untracked(),
             recording_shortcut: rec_shortcut.get_untracked(),
             cancel_shortcut: cancel_shortcut.get_untracked(),
             play_sound: play_sound.get_untracked(),
@@ -158,13 +166,35 @@ pub fn App() -> impl IntoView {
             <h1 class="settings-title">"Henry Whisper"</h1>
 
             <div class="field">
-                <label class="label">"Gemini API Key"</label>
+                <label class="label">"OpenAI API Key"</label>
                 <input
                     class="input"
                     type="password"
-                    placeholder="AIza..."
+                    placeholder="EMPTY"
                     prop:value=move || api_key.get()
                     on:input=move |ev| set_api_key.set(event_target_value(&ev))
+                />
+            </div>
+
+            <div class="field">
+                <label class="label">"Base URL"</label>
+                <input
+                    class="input"
+                    type="text"
+                    placeholder="http://192.168.86.29:8001/v1"
+                    prop:value=move || base_url.get()
+                    on:input=move |ev| set_base_url.set(event_target_value(&ev))
+                />
+            </div>
+
+            <div class="field">
+                <label class="label">"Transcription Model"</label>
+                <input
+                    class="input"
+                    type="text"
+                    placeholder="Qwen/Qwen3-ASR-0.6B"
+                    prop:value=move || transcription_model.get()
+                    on:input=move |ev| set_transcription_model.set(event_target_value(&ev))
                 />
             </div>
 

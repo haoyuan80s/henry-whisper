@@ -20,6 +20,7 @@ members = ["src-tauri"]
 
 [profile.dev]
 opt-level = 1
+incremental = false
 
 [profile.dev.package."*"]
 opt-level = 3

@@ -1,10 +1,8 @@
+use anyhow::Result;
 use arboard::Clipboard;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
-use serde_json::json;
 use std::sync::Mutex;
 use tauri::Manager;
 use tracing::debug;
@@ -22,26 +20,25 @@ fn rms(data: &[f32]) -> f32 {
     (sum / data.len() as f32).sqrt()
 }
 
-pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
     let state = app.state::<AppState>();
     {
         let recording = state.recording.lock().unwrap();
         if recording.is_some() {
-            return Err("Already recording".to_string());
+            return Err(anyhow::anyhow!("Already recording"));
         }
     }
 
     let host = cpal::default_host();
     let device = host
         .default_input_device()
-        .ok_or("No input device available")?;
-    let config = device.default_input_config().map_err(|e| e.to_string())?;
+        .ok_or_else(|| anyhow::anyhow!("No input device available"))?;
+    let config = device.default_input_config()?;
     let sample_rate = config.sample_rate();
     let channels = config.channels() as u16;
-
     let (sample_tx, sample_rx) = crossbeam_channel::unbounded::<Vec<f32>>();
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<()>>();
 
     let join_handle = tokio::task::spawn_blocking(move || {
         let ready_tx = Mutex::new(Some(ready_tx));
@@ -61,7 +58,6 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
 
                     let _ = sample_tx.send(data.to_vec());
 
-                    // Signal ready on first frame past the threshold
                     if let Some(tx) = ready_tx.lock().unwrap().take() {
                         let _ = tx.send(Ok(()));
                     }
@@ -75,9 +71,7 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
         drop(stream);
     });
 
-    ready_rx
-        .await
-        .map_err(|_| "Recording thread crashed".to_string())??;
+    ready_rx.await??;
 
     *state.recording.lock().unwrap() = Some(RecordingHandle {
         sample_rx,
@@ -87,7 +81,7 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
         channels,
     });
 
-    let settings = state.settings.lock().unwrap().clone();
+    let settings = state.settings.lock().expect("lock settings").clone();
 
     if settings.play_sound {
         state.audio.play(SoundEffect::Record);
@@ -97,11 +91,13 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     let state = app.state::<AppState>();
     let handle = {
         let mut recording = state.recording.lock().unwrap();
-        recording.take().ok_or("Not currently recording")?
+        recording
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Not currently recording"))?
     };
 
     set_tray_title(&app, Some("Transcribing..."));
@@ -116,11 +112,10 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
     let samples: Vec<f32> = handle.sample_rx.try_iter().flatten().collect();
     if samples.is_empty() {
         set_tray_title(&app, None);
-        return Err("No audio recorded".to_string());
+        return Err(anyhow::anyhow!("No audio captured"));
     }
 
-    let wav_bytes =
-        encode_wav(&samples, handle.sample_rate, handle.channels).map_err(|e| e.to_string())?;
+    let wav_bytes = encode_wav(&samples, handle.sample_rate, handle.channels)?;
 
     if std::env::var("HENRY_WHISPER_DEBUG_AUDIO").as_deref() == Ok("1") {
         let dir = std::path::Path::new("/tmp/henry-whisper");
@@ -134,52 +129,13 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
         debug!(path = %path.display(), "saved debug audio");
     }
 
-    let audio_b64 = BASE64.encode(&wav_bytes);
-
-    let api_key = state.settings.lock().unwrap().api_key.clone();
-    if api_key.is_empty() {
-        set_tray_title(&app, None);
-        return Err("API key not configured. Open Settings from the tray.".to_string());
-    }
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {api_key}"))
-        .json(&json!({
-            "model": "openai/gpt-audio-mini",
-            "messages": [{
-                "role": "user",
-                "temperature": 0,
-                "content": [
-                    {
-                        "type": "text",
-                        "text": r#"You are a transcription engine. Return only the spoken words. If no voice is audible, return exactly: don't hear"#
-                    },
-                    {
-                        "type": "input_audio",
-                        "input_audio": { "data": audio_b64, "format": "wav" }
-                    }
-                ]
-            }]
-        }))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-
-    if let Some(err) = body.get("error") {
-        set_tray_title(&app, None);
-        return Err(format!("API error: {err}"));
-    }
-
-    let transcript = body["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-
+    let transcript = match state.ai.transcribe_wav(wav_bytes).await {
+        Ok(transcript) => transcript,
+        Err(err) => {
+            set_tray_title(&app, None);
+            return Err(err);
+        }
+    };
     debug!(transcript = %transcript, "transcription result");
 
     // Always copy to clipboard
@@ -194,7 +150,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<(), String>
     Ok(())
 }
 
-pub async fn do_record_or_transcribe(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn do_record_or_transcribe(app: tauri::AppHandle) -> Result<()> {
     let is_recording = {
         let state = app.state::<AppState>();
         state.recording.lock().unwrap().is_some()

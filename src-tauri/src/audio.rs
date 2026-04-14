@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::io::Cursor;
 use std::sync::mpsc;
 use std::thread;
@@ -52,11 +53,7 @@ impl AudioPlayer {
     }
 }
 
-pub fn encode_wav(
-    samples: &[f32],
-    sample_rate: u32,
-    channels: u16,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn encode_wav(samples: &[f32], sample_rate: u32, channels: u16) -> Result<Vec<u8>> {
     let spec = hound::WavSpec {
         channels,
         sample_rate,

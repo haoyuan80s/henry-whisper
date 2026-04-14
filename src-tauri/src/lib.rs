@@ -1,3 +1,5 @@
+mod ai;
+mod app;
 mod audio;
 mod commands;
 mod recording;
@@ -18,6 +20,7 @@ use tauri::menu::MenuItem;
 use tauri::menu::PredefinedMenuItem;
 use tauri::tray::TrayIconBuilder;
 
+use crate::ai::Ai;
 use crate::recording::do_cancel_recording;
 use crate::tray::DEFAULT_TRAY_TITLE;
 
@@ -34,12 +37,15 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            let ai = Ai::new("http://192.168.86.29:8001/v1", "Qwen/Qwen3-ASR-0.6B");
+
             // Load persisted settings
             let settings = load_settings(app.handle());
             app.manage(AppState {
                 recording: Mutex::new(None),
                 settings: Mutex::new(settings.clone()),
                 audio: AudioPlayer::new(),
+                ai,
             });
 
             // Build tray context menu
