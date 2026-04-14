@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    henry_whisper_lib::run()
+    henry_whisper_lib::app::run()
 }

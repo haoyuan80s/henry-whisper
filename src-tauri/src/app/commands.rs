@@ -1,9 +1,9 @@
 use tauri::Manager;
 
-use crate::settings::AppSettings;
-use crate::settings::persist_settings;
-use crate::shortcuts::register_shortcuts;
-use crate::state::AppState;
+use super::settings::AppSettings;
+use super::settings::persist_settings;
+use super::shortcuts::register_shortcuts;
+use super::state::AppState;
 
 #[tauri::command]
 pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {

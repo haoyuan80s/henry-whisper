@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 
+use super::settings::AppSettings;
 use crate::ai::Ai;
 use crate::audio::AudioPlayer;
-use crate::settings::AppSettings;
 
 pub struct RecordingHandle {
     pub sample_rx: crossbeam_channel::Receiver<Vec<f32>>,

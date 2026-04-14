@@ -13,10 +13,10 @@ pub enum SoundEffect {
 impl SoundEffect {
     fn bytes(&self) -> &'static [u8] {
         match self {
-            SoundEffect::Record => include_bytes!("../resources/record.wav"),
-            SoundEffect::TranscribeStart => include_bytes!("../resources/transcribe_start.wav"),
-            SoundEffect::Transcribe => include_bytes!("../resources/transcribe.wav"),
-            SoundEffect::Cancel => include_bytes!("../resources/cancel.wav"),
+            SoundEffect::Record => include_bytes!("../assets/record.wav"),
+            SoundEffect::TranscribeStart => include_bytes!("../assets/transcribe_start.wav"),
+            SoundEffect::Transcribe => include_bytes!("../assets/transcribe.wav"),
+            SoundEffect::Cancel => include_bytes!("../assets/cancel.wav"),
         }
     }
 }

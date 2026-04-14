@@ -7,11 +7,11 @@ use std::sync::Mutex;
 use tauri::Manager;
 use tracing::debug;
 
+use super::state::AppState;
+use super::state::RecordingHandle;
+use super::tray::set_tray_title;
 use crate::audio::SoundEffect;
 use crate::audio::encode_wav;
-use crate::state::AppState;
-use crate::state::RecordingHandle;
-use crate::tray::set_tray_title;
 
 const VOICE_THRESHOLD: f32 = 0.0001;
 

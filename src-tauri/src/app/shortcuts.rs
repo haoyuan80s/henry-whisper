@@ -1,8 +1,8 @@
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use tauri_plugin_global_shortcut::ShortcutState;
 
-use crate::recording::do_cancel_recording;
-use crate::recording::do_record_or_transcribe;
+use super::recording::do_cancel_recording;
+use super::recording::do_record_or_transcribe;
 
 pub fn register_shortcuts(app: &tauri::AppHandle, rec: &str, cancel: &str) {
     let gs = app.global_shortcut();
