@@ -1,16 +1,19 @@
 use async_openai::Client;
 use async_openai::config::OpenAIConfig;
+use async_openai::types::chat::ChatCompletionRequestSystemMessage;
+use async_openai::types::chat::ChatCompletionRequestUserMessage;
+use async_openai::types::chat::CreateChatCompletionRequestArgs;
 use async_openai::types::chat::CreateChatCompletionResponse;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::json;
 
-pub struct Ai {
+pub struct AiModel {
     client: async_openai::Client<OpenAIConfig>,
     model: String,
 }
 
-impl Ai {
+impl AiModel {
     pub fn new(base_url: &str, model: &str) -> Self {
         let config = OpenAIConfig::new().with_api_base(base_url);
         let client = Client::with_config(config);
@@ -18,6 +21,81 @@ impl Ai {
             client,
             model: model.to_string(),
         }
+    }
+
+    pub async fn chat(&self, system_message: &str, user_message: &str) -> anyhow::Result<String> {
+        let request = CreateChatCompletionRequestArgs::default()
+            .max_tokens(1024u32)
+            .model(self.model.clone())
+            .messages([
+                ChatCompletionRequestSystemMessage::from(system_message).into(),
+                ChatCompletionRequestUserMessage::from(user_message).into(),
+            ])
+            .build()?;
+        let resp = self.client.chat().create(request).await?;
+        let msg = resp.choices[0]
+            .clone()
+            .message
+            .content
+            .unwrap_or_else(|| "No response".to_string());
+        Ok(msg)
+    }
+
+    pub async fn audio_chat(
+        &self,
+        system_message: &str,
+        user_message: &str,
+        wav_bytes: Vec<u8>,
+    ) -> anyhow::Result<String> {
+        let audio_b64 = BASE64_STANDARD.encode(&wav_bytes);
+
+        let resp: CreateChatCompletionResponse = self
+            .client
+            .chat()
+            .create_byot(json!({
+                "messages": [
+                {
+                    "model": self.model,
+                    "role": "system",
+                    "content": [
+                    {
+                        "type": "text",
+                        "text": system_message
+                    }
+                    ]
+                },
+                {
+                    "model": self.model,
+                    "role": "user",
+                    "content": [
+                    {
+                        "type": "text",
+                        "text": user_message
+                    }
+                    ]
+                },
+                {
+                    "model": self.model,
+                    "role": "user",
+                    "content": [
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": audio_b64,
+                            "format": "wav"
+                        }
+                    }
+                    ]
+                }
+                ]
+            }))
+            .await?;
+        let msg = resp.choices[0]
+            .clone()
+            .message
+            .content
+            .unwrap_or_else(|| "No transcript".to_string());
+        Ok(prune_transcript(&msg).to_string())
     }
 
     pub async fn transcribe_wav(&self, wav_bytes: Vec<u8>) -> anyhow::Result<String> {
@@ -30,13 +108,15 @@ impl Ai {
                 "messages": [{
                     "model": self.model,
                     "role": "user",
-                    "content": [{
+                    "content": [
+                    {
                         "type": "input_audio",
                         "input_audio": {
                             "data": audio_b64,
                             "format": "wav"
                         }
-                    }]
+                    }
+                    ]
                 }]
             }))
             .await?;

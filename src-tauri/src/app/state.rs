@@ -1,7 +1,9 @@
 use std::sync::Mutex;
 
+use arboard::Clipboard;
+
 use super::settings::AppSettings;
-use crate::ai::Ai;
+use crate::ai::AiModel;
 use crate::audio::AudioPlayer;
 
 pub struct RecordingHandle {
@@ -15,6 +17,8 @@ pub struct RecordingHandle {
 pub struct AppState {
     pub recording: Mutex<Option<RecordingHandle>>,
     pub settings: Mutex<AppSettings>,
+    pub clipboard: Mutex<Clipboard>,
     pub audio: AudioPlayer,
-    pub ai: Ai,
+    pub transcription_model: AiModel,
+    pub polish_model: AiModel,
 }

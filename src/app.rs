@@ -12,12 +12,23 @@ extern "C" {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct AppSettings {
-    api_key: String,
-    base_url: String,
-    transcription_model: String,
-    recording_shortcut: String,
-    cancel_shortcut: String,
+    transcription_model: AiModelSetting,
+    polish_model: AiModelSetting,
+    shortcut: ShortcutSetting,
+    polish: bool,
     play_sound: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct AiModelSetting {
+    base_url: String,
+    model: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct ShortcutSetting {
+    recording: String,
+    cancel: String,
 }
 
 #[component]
@@ -103,11 +114,13 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
 
 #[component]
 pub fn App() -> impl IntoView {
-    let (api_key, set_api_key) = signal(String::new());
-    let (base_url, set_base_url) = signal(String::new());
+    let (transcription_base_url, set_transcription_base_url) = signal(String::new());
     let (transcription_model, set_transcription_model) = signal(String::new());
+    let (polish_base_url, set_polish_base_url) = signal(String::new());
+    let (polish_model, set_polish_model) = signal(String::new());
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
+    let (polish, set_polish) = signal(true);
     let (play_sound, set_play_sound) = signal(true);
     let (saving, set_saving) = signal(false);
     let (error, set_error) = signal(None::<String>);
@@ -117,11 +130,13 @@ pub fn App() -> impl IntoView {
         spawn_local(async move {
             if let Ok(val) = invoke("get_settings", JsValue::NULL).await {
                 if let Ok(s) = serde_wasm_bindgen::from_value::<AppSettings>(val) {
-                    set_api_key.set(s.api_key);
-                    set_base_url.set(s.base_url);
-                    set_transcription_model.set(s.transcription_model);
-                    set_rec_shortcut.set(s.recording_shortcut);
-                    set_cancel_shortcut.set(s.cancel_shortcut);
+                    set_transcription_base_url.set(s.transcription_model.base_url);
+                    set_transcription_model.set(s.transcription_model.model);
+                    set_polish_base_url.set(s.polish_model.base_url);
+                    set_polish_model.set(s.polish_model.model);
+                    set_rec_shortcut.set(s.shortcut.recording);
+                    set_cancel_shortcut.set(s.shortcut.cancel);
+                    set_polish.set(s.polish);
                     set_play_sound.set(s.play_sound);
                 }
             }
@@ -132,11 +147,19 @@ pub fn App() -> impl IntoView {
         set_error.set(None);
         set_saving.set(true);
         let s = AppSettings {
-            api_key: api_key.get_untracked(),
-            base_url: base_url.get_untracked(),
-            transcription_model: transcription_model.get_untracked(),
-            recording_shortcut: rec_shortcut.get_untracked(),
-            cancel_shortcut: cancel_shortcut.get_untracked(),
+            transcription_model: AiModelSetting {
+                base_url: transcription_base_url.get_untracked(),
+                model: transcription_model.get_untracked(),
+            },
+            polish_model: AiModelSetting {
+                base_url: polish_base_url.get_untracked(),
+                model: polish_model.get_untracked(),
+            },
+            shortcut: ShortcutSetting {
+                recording: rec_shortcut.get_untracked(),
+                cancel: cancel_shortcut.get_untracked(),
+            },
+            polish: polish.get_untracked(),
             play_sound: play_sound.get_untracked(),
         };
         spawn_local(async move {
@@ -166,24 +189,13 @@ pub fn App() -> impl IntoView {
             <h1 class="settings-title">"Henry Whisper"</h1>
 
             <div class="field">
-                <label class="label">"OpenAI API Key"</label>
-                <input
-                    class="input"
-                    type="password"
-                    placeholder="EMPTY"
-                    prop:value=move || api_key.get()
-                    on:input=move |ev| set_api_key.set(event_target_value(&ev))
-                />
-            </div>
-
-            <div class="field">
-                <label class="label">"Base URL"</label>
+                <label class="label">"Transcription Base URL"</label>
                 <input
                     class="input"
                     type="text"
                     placeholder="http://192.168.86.29:8001/v1"
-                    prop:value=move || base_url.get()
-                    on:input=move |ev| set_base_url.set(event_target_value(&ev))
+                    prop:value=move || transcription_base_url.get()
+                    on:input=move |ev| set_transcription_base_url.set(event_target_value(&ev))
                 />
             </div>
 
@@ -195,6 +207,29 @@ pub fn App() -> impl IntoView {
                     placeholder="Qwen/Qwen3-ASR-0.6B"
                     prop:value=move || transcription_model.get()
                     on:input=move |ev| set_transcription_model.set(event_target_value(&ev))
+                />
+            </div>
+
+
+            <div class="field">
+                <label class="label">"Polish Base URL"</label>
+                <input
+                    class="input"
+                    type="text"
+                    placeholder="http://192.168.86.29:8000/v1"
+                    prop:value=move || polish_base_url.get()
+                    on:input=move |ev| set_polish_base_url.set(event_target_value(&ev))
+                />
+            </div>
+
+            <div class="field">
+                <label class="label">"Polish Model"</label>
+                <input
+                    class="input"
+                    type="text"
+                    placeholder="google/gemma-4-E4B-it"
+                    prop:value=move || polish_model.get()
+                    on:input=move |ev| set_polish_model.set(event_target_value(&ev))
                 />
             </div>
 
@@ -215,6 +250,18 @@ pub fn App() -> impl IntoView {
                         type="checkbox"
                         prop:checked=move || play_sound.get()
                         on:change=move |ev| set_play_sound.set(event_target_checked(&ev))
+                    />
+                    <span class="toggle-track"></span>
+                </label>
+            </div>
+
+            <div class="field toggle-field">
+                <label class="label">"Polish transcript"</label>
+                <label class="toggle">
+                    <input
+                        type="checkbox"
+                        prop:checked=move || polish.get()
+                        on:change=move |ev| set_polish.set(event_target_checked(&ev))
                     />
                     <span class="toggle-track"></span>
                 </label>

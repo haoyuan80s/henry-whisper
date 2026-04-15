@@ -1,17 +1,15 @@
 use anyhow::Result;
-use arboard::Clipboard;
 use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
 use std::sync::Mutex;
 use tauri::Manager;
-use tracing::debug;
 
 use super::state::AppState;
 use super::state::RecordingHandle;
 use super::tray::set_tray_title;
 use crate::audio::SoundEffect;
-use crate::audio::encode_wav;
+use crate::audio::encode_transcription_wav;
 
 const VOICE_THRESHOLD: f32 = 0.0001;
 
@@ -115,33 +113,71 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         return Err(anyhow::anyhow!("No audio captured"));
     }
 
-    let wav_bytes = encode_wav(&samples, handle.sample_rate, handle.channels)?;
+    let wav_bytes = encode_transcription_wav(&samples, handle.sample_rate, handle.channels)?;
+    let input_duration_secs =
+        samples.len() as f64 / handle.sample_rate as f64 / f64::from(handle.channels);
 
-    if std::env::var("HENRY_WHISPER_DEBUG_AUDIO").as_deref() == Ok("1") {
-        let dir = std::path::Path::new("/tmp/henry-whisper");
-        std::fs::create_dir_all(dir).ok();
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let path = dir.join(format!("{ts}.wav"));
-        std::fs::write(&path, &wav_bytes).ok();
-        debug!(path = %path.display(), "saved debug audio");
-    }
+    tracing::info!(
+        input_samples = samples.len(),
+        input_sample_rate = handle.sample_rate,
+        input_channels = handle.channels,
+        duration_secs = format_args!("{input_duration_secs:.2}"),
+        wav_bytes = wav_bytes.len(),
+        wav_kib = format_args!("{:.2}", wav_bytes.len() as f64 / 1024.0),
+        "Prepared transcription audio"
+    );
 
-    let transcript = match state.ai.transcribe_wav(wav_bytes).await {
+    // if std::env::var("HENRY_WHISPER_DEBUG_AUDIO").as_deref() == Ok("1") {
+    //     let dir = std::path::Path::new("/tmp/henry-whisper");
+    //     std::fs::create_dir_all(dir).ok();
+    //     let ts = std::time::SystemTime::now()
+    //         .duration_since(std::time::UNIX_EPOCH)
+    //         .map(|d| d.as_secs())
+    //         .unwrap_or(0);
+    //     let path = dir.join(format!("{ts}.wav"));
+    //     std::fs::write(&path, &wav_bytes).ok();
+    //     debug!(path = %path.display(), "saved debug audio");
+    // }
+
+    tracing::info!(
+        "Transcribing audio with {} input samples at {} Hz across {} channel(s)",
+        samples.len(),
+        handle.sample_rate,
+        handle.channels
+    );
+    let now = std::time::Instant::now();
+    let transcript = match state.transcription_model.transcribe_wav(wav_bytes).await {
         Ok(transcript) => transcript,
         Err(err) => {
             set_tray_title(&app, None);
             return Err(err);
         }
     };
-    debug!(transcript = %transcript, "transcription result");
+    let elapsed = now.elapsed();
+    tracing::info!("Transcription completed in {:.2?}: {transcript}", elapsed);
 
-    // Always copy to clipboard
-    if let Ok(mut cb) = Clipboard::new() {
-        let _ = cb.set_text(&transcript);
-    }
+    let mut polished_transcript = None;
+    if state.settings.lock().unwrap().polish {
+        tracing::info!("Polishing transcript: {transcript}");
+        polished_transcript = Some(
+            state
+                .polish_model
+                .chat(include_str!("./polish.md"), &transcript)
+                .await?,
+        );
+        let elapsed_total = now.elapsed();
+        tracing::info!(
+            "Polishing completed in {:.2?}, total time: {:.2?}",
+            elapsed_total - elapsed,
+            elapsed_total
+        );
+    };
+
+    state
+        .clipboard
+        .lock()
+        .expect("lock clipboard")
+        .set_text(polished_transcript.unwrap_or(transcript))?;
 
     if settings.play_sound {
         state.audio.play(SoundEffect::Transcribe);

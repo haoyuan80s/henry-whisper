@@ -15,7 +15,7 @@ use tauri::menu::MenuItem;
 use tauri::menu::PredefinedMenuItem;
 use tauri::tray::TrayIconBuilder;
 
-use crate::ai::Ai;
+use crate::ai::AiModel;
 use crate::audio::AudioPlayer;
 use recording::do_cancel_recording;
 use recording::do_record_or_transcribe;
@@ -34,15 +34,23 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let ai = Ai::new("http://192.168.86.29:8001/v1", "Qwen/Qwen3-ASR-0.6B");
-
             // Load persisted settings
             let settings = load_settings(app.handle());
+            let transcription_model = AiModel::new(
+                &settings.transcription_model.base_url,
+                &settings.transcription_model.model,
+            );
+            let polish_model = AiModel::new(
+                &settings.polish_model.base_url,
+                &settings.polish_model.model,
+            );
             app.manage(AppState {
                 recording: Mutex::new(None),
                 settings: Mutex::new(settings.clone()),
                 audio: AudioPlayer::new(),
-                ai,
+                transcription_model,
+                polish_model,
+                clipboard: Mutex::new(arboard::Clipboard::new().expect("new clipboard")),
             });
 
             // Build tray context menu
@@ -107,11 +115,7 @@ pub fn run() {
             }
 
             // Register global shortcuts
-            register_shortcuts(
-                app.handle(),
-                &settings.recording_shortcut,
-                &settings.cancel_shortcut,
-            );
+            register_shortcuts(app.handle(), &settings.shortcut);
 
             Ok(())
         })
