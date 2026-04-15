@@ -8,6 +8,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::json;
 
+#[derive(Clone)]
 pub struct AiModel {
     client: async_openai::Client<OpenAIConfig>,
     model: String,

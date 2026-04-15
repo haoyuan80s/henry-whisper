@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
 use serde::Serialize;
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -10,7 +11,7 @@ extern "C" {
     async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct AppSettings {
     transcription_model: AiModelSetting,
     polish_model: AiModelSetting,
@@ -19,13 +20,13 @@ struct AppSettings {
     play_sound: bool,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct AiModelSetting {
     base_url: String,
     model: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct ShortcutSetting {
     recording: String,
     cancel: String,
@@ -112,6 +113,68 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
     }
 }
 
+fn current_settings(
+    transcription_base_url: ReadSignal<String>,
+    transcription_model: ReadSignal<String>,
+    polish_base_url: ReadSignal<String>,
+    polish_model: ReadSignal<String>,
+    rec_shortcut: ReadSignal<String>,
+    cancel_shortcut: ReadSignal<String>,
+    polish: ReadSignal<bool>,
+    play_sound: ReadSignal<bool>,
+) -> AppSettings {
+    AppSettings {
+        transcription_model: AiModelSetting {
+            base_url: transcription_base_url.get(),
+            model: transcription_model.get(),
+        },
+        polish_model: AiModelSetting {
+            base_url: polish_base_url.get(),
+            model: polish_model.get(),
+        },
+        shortcut: ShortcutSetting {
+            recording: rec_shortcut.get(),
+            cancel: cancel_shortcut.get(),
+        },
+        polish: polish.get(),
+        play_sound: play_sound.get(),
+    }
+}
+
+fn persist_settings(
+    settings: AppSettings,
+    request_id: u64,
+    save_request_id: ReadSignal<u64>,
+    set_saving: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+    set_last_saved: WriteSignal<Option<AppSettings>>,
+    on_saved: impl FnOnce() + 'static,
+) {
+    spawn_local(async move {
+        let args =
+            serde_wasm_bindgen::to_value(&serde_json::json!({ "settings": settings })).unwrap();
+        match invoke("save_settings", args).await {
+            Ok(_) => {
+                if save_request_id.get_untracked() == request_id {
+                    set_last_saved.set(Some(settings));
+                    on_saved();
+                }
+            }
+            Err(e) => {
+                if save_request_id.get_untracked() == request_id {
+                    set_error.set(Some(
+                        e.as_string().unwrap_or("Error saving settings".into()),
+                    ));
+                }
+            }
+        }
+
+        if save_request_id.get_untracked() == request_id {
+            set_saving.set(false);
+        }
+    });
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     let (transcription_base_url, set_transcription_base_url) = signal(String::new());
@@ -124,12 +187,16 @@ pub fn App() -> impl IntoView {
     let (play_sound, set_play_sound) = signal(true);
     let (saving, set_saving) = signal(false);
     let (error, set_error) = signal(None::<String>);
+    let (loaded, set_loaded) = signal(false);
+    let (last_saved, set_last_saved) = signal(None::<AppSettings>);
+    let (save_request_id, set_save_request_id) = signal(0_u64);
 
     // Load settings on mount
     Effect::new(move |_| {
         spawn_local(async move {
             if let Ok(val) = invoke("get_settings", JsValue::NULL).await {
                 if let Ok(s) = serde_wasm_bindgen::from_value::<AppSettings>(val) {
+                    set_last_saved.set(Some(s.clone()));
                     set_transcription_base_url.set(s.transcription_model.base_url);
                     set_transcription_model.set(s.transcription_model.model);
                     set_polish_base_url.set(s.polish_model.base_url);
@@ -138,50 +205,90 @@ pub fn App() -> impl IntoView {
                     set_cancel_shortcut.set(s.shortcut.cancel);
                     set_polish.set(s.polish);
                     set_play_sound.set(s.play_sound);
+                    set_loaded.set(true);
                 }
             }
         });
     });
 
-    let save = move |_| {
-        set_error.set(None);
-        set_saving.set(true);
-        let s = AppSettings {
-            transcription_model: AiModelSetting {
-                base_url: transcription_base_url.get_untracked(),
-                model: transcription_model.get_untracked(),
-            },
-            polish_model: AiModelSetting {
-                base_url: polish_base_url.get_untracked(),
-                model: polish_model.get_untracked(),
-            },
-            shortcut: ShortcutSetting {
-                recording: rec_shortcut.get_untracked(),
-                cancel: cancel_shortcut.get_untracked(),
-            },
-            polish: polish.get_untracked(),
-            play_sound: play_sound.get_untracked(),
-        };
-        spawn_local(async move {
-            let args = serde_wasm_bindgen::to_value(&serde_json::json!({ "settings": s })).unwrap();
-            match invoke("save_settings", args).await {
-                Ok(_) => {
-                    let _ = invoke("hide_settings_window", JsValue::NULL).await;
-                }
-                Err(e) => {
-                    set_error.set(Some(
-                        e.as_string().unwrap_or("Error saving settings".into()),
-                    ));
-                }
-            }
-            set_saving.set(false);
-        });
-    };
+    let mut schedule_save = leptos::leptos_dom::helpers::debounce(
+        Duration::from_millis(550),
+        move |settings: AppSettings| {
+            set_error.set(None);
+            set_saving.set(true);
+            let request_id = save_request_id.get_untracked() + 1;
+            set_save_request_id.set(request_id);
 
-    let cancel = move |_| {
-        spawn_local(async move {
-            let _ = invoke("hide_settings_window", JsValue::NULL).await;
-        });
+            persist_settings(
+                settings,
+                request_id,
+                save_request_id,
+                set_saving,
+                set_error,
+                set_last_saved,
+                || {},
+            );
+        },
+    );
+
+    Effect::new(move |_| {
+        if !loaded.get() {
+            return;
+        }
+
+        let settings = current_settings(
+            transcription_base_url,
+            transcription_model,
+            polish_base_url,
+            polish_model,
+            rec_shortcut,
+            cancel_shortcut,
+            polish,
+            play_sound,
+        );
+
+        if last_saved.get().as_ref() == Some(&settings) {
+            return;
+        }
+
+        schedule_save(settings);
+    });
+
+    let close = move |_| {
+        let settings = current_settings(
+            transcription_base_url,
+            transcription_model,
+            polish_base_url,
+            polish_model,
+            rec_shortcut,
+            cancel_shortcut,
+            polish,
+            play_sound,
+        );
+
+        if loaded.get_untracked() && last_saved.get_untracked().as_ref() != Some(&settings) {
+            set_error.set(None);
+            set_saving.set(true);
+            let request_id = save_request_id.get_untracked() + 1;
+            set_save_request_id.set(request_id);
+            persist_settings(
+                settings,
+                request_id,
+                save_request_id,
+                set_saving,
+                set_error,
+                set_last_saved,
+                || {
+                    spawn_local(async move {
+                        let _ = invoke("hide_settings_window", JsValue::NULL).await;
+                    });
+                },
+            );
+        } else {
+            spawn_local(async move {
+                let _ = invoke("hide_settings_window", JsValue::NULL).await;
+            });
+        }
     };
 
     view! {
@@ -272,14 +379,18 @@ pub fn App() -> impl IntoView {
             })}
 
             <div class="actions">
-                <button class="btn-cancel" on:click=cancel>"Cancel"</button>
-                <button
-                    class="btn-save"
-                    on:click=save
-                    disabled=move || saving.get()
-                >
-                    {move || if saving.get() { "Saving…" } else { "Save" }}
-                </button>
+                <div class="save-status">
+                    {move || {
+                        if saving.get() {
+                            "Saving..."
+                        } else if error.get().is_some() {
+                            "Could not save"
+                        } else {
+                            "Saved"
+                        }
+                    }}
+                </div>
+                <button class="btn-save" on:click=close>"Done"</button>
             </div>
         </div>
     }

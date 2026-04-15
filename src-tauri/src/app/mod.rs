@@ -48,8 +48,8 @@ pub fn run() {
                 recording: Mutex::new(None),
                 settings: Mutex::new(settings.clone()),
                 audio: AudioPlayer::new(),
-                transcription_model,
-                polish_model,
+                transcription_model: Mutex::new(transcription_model),
+                polish_model: Mutex::new(polish_model),
                 clipboard: Mutex::new(arboard::Clipboard::new().expect("new clipboard")),
             });
 

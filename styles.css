@@ -145,10 +145,16 @@ body {
 /* Actions */
 .actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-top: auto;
   padding-top: 4px;
+}
+
+.save-status {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 button {

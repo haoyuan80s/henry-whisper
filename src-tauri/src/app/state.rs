@@ -19,6 +19,6 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub clipboard: Mutex<Clipboard>,
     pub audio: AudioPlayer,
-    pub transcription_model: AiModel,
-    pub polish_model: AiModel,
+    pub transcription_model: Mutex<AiModel>,
+    pub polish_model: Mutex<AiModel>,
 }

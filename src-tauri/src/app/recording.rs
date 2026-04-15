@@ -146,7 +146,8 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         handle.channels
     );
     let now = std::time::Instant::now();
-    let transcript = match state.transcription_model.transcribe_mp3(mp3_bytes).await {
+    let transcription_model = state.transcription_model.lock().unwrap().clone();
+    let transcript = match transcription_model.transcribe_mp3(mp3_bytes).await {
         Ok(transcript) => transcript,
         Err(err) => {
             set_tray_title(&app, None);
@@ -159,9 +160,9 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     let mut polished_transcript = None;
     if state.settings.lock().unwrap().polish {
         tracing::debug!("Polishing transcript: {transcript}");
+        let polish_model = state.polish_model.lock().unwrap().clone();
         polished_transcript = Some(
-            state
-                .polish_model
+            polish_model
                 .chat(include_str!("./polish.md"), &transcript)
                 .await?,
         );
