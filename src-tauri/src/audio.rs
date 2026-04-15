@@ -31,36 +31,23 @@ impl SoundEffect {
     }
 }
 
-pub struct AudioPlayer {
-    tx: mpsc::Sender<SoundEffect>,
-}
-
-impl AudioPlayer {
-    pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<SoundEffect>();
-        thread::spawn(move || {
-            let mut device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("[AudioPlayer] open_default_sink failed: {e}");
-                    return;
-                }
-            };
-            device_sink.log_on_drop(false);
-            for effect in rx {
-                let cursor = Cursor::new(effect.bytes());
-                match rodio::play(device_sink.mixer(), cursor) {
-                    Ok(player) => player.sleep_until_end(),
-                    Err(e) => eprintln!("[AudioPlayer] play failed: {e}"),
-                }
+pub fn play_sound(effect: SoundEffect) {
+    std::thread::spawn(move || {
+        let mut device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[AudioPlayer] open_default_sink failed: {e}");
+                return;
             }
-        });
-        Self { tx }
-    }
+        };
+        device_sink.log_on_drop(false);
 
-    pub fn play(&self, effect: SoundEffect) {
-        let _ = self.tx.send(effect);
-    }
+        let cursor = Cursor::new(effect.bytes());
+        match rodio::play(device_sink.mixer(), cursor) {
+            Ok(player) => player.sleep_until_end(),
+            Err(e) => eprintln!("[AudioPlayer] play failed: {e}"),
+        }
+    });
 }
 
 pub fn encode_transcription_wav(

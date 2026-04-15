@@ -4,7 +4,6 @@ use arboard::Clipboard;
 
 use super::settings::AppSettings;
 use crate::ai::AiModel;
-use crate::audio::AudioPlayer;
 
 pub struct RecordingHandle {
     pub sample_rx: crossbeam_channel::Receiver<Vec<f32>>,
@@ -18,7 +17,6 @@ pub struct AppState {
     pub recording: Mutex<Option<RecordingHandle>>,
     pub settings: Mutex<AppSettings>,
     pub clipboard: Mutex<Clipboard>,
-    pub audio: AudioPlayer,
     pub transcription_model: Mutex<AiModel>,
     pub polish_model: Mutex<AiModel>,
 }

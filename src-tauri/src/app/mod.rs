@@ -16,7 +16,6 @@ use tauri::menu::PredefinedMenuItem;
 use tauri::tray::TrayIconBuilder;
 
 use crate::ai::AiModel;
-use crate::audio::AudioPlayer;
 use recording::do_cancel_recording;
 use recording::do_record_or_transcribe;
 use tray::DEFAULT_TRAY_TITLE;
@@ -47,7 +46,6 @@ pub fn run() {
             app.manage(AppState {
                 recording: Mutex::new(None),
                 settings: Mutex::new(settings.clone()),
-                audio: AudioPlayer::new(),
                 transcription_model: Mutex::new(transcription_model),
                 polish_model: Mutex::new(polish_model),
                 clipboard: Mutex::new(arboard::Clipboard::new().expect("new clipboard")),

@@ -10,6 +10,7 @@ use super::state::RecordingHandle;
 use super::tray::set_tray_title;
 use crate::audio::SoundEffect;
 use crate::audio::encode_transcription_mp3;
+use crate::audio::play_sound;
 
 const VOICE_THRESHOLD: f32 = 0.0001;
 
@@ -82,7 +83,7 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
     let settings = state.settings.lock().expect("lock settings").clone();
 
     if settings.play_sound {
-        state.audio.play(SoundEffect::Record);
+        play_sound(SoundEffect::Record);
     }
 
     set_tray_title(&app, Some("Recording..."));
@@ -104,7 +105,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
 
     let settings = state.settings.lock().unwrap().clone();
     if settings.play_sound {
-        state.audio.play(SoundEffect::TranscribeStart);
+        play_sound(SoundEffect::TranscribeStart);
     }
 
     let samples: Vec<f32> = handle.sample_rx.try_iter().flatten().collect();
@@ -181,7 +182,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         .set_text(polished_transcript.unwrap_or(transcript))?;
 
     if settings.play_sound {
-        state.audio.play(SoundEffect::Transcribe);
+        play_sound(SoundEffect::Transcribe);
     }
     set_tray_title(&app, None);
     Ok(())
@@ -211,7 +212,7 @@ pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
     handle.join_handle.await.ok();
     let settings = state.settings.lock().unwrap().clone();
     if settings.play_sound {
-        state.audio.play(SoundEffect::Cancel);
+        play_sound(SoundEffect::Cancel);
     }
     Ok(())
 }
