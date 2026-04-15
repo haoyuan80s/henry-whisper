@@ -9,7 +9,7 @@ use super::state::AppState;
 use super::state::RecordingHandle;
 use super::tray::set_tray_title;
 use crate::audio::SoundEffect;
-use crate::audio::encode_transcription_wav;
+use crate::audio::encode_transcription_mp3;
 
 const VOICE_THRESHOLD: f32 = 0.0001;
 
@@ -113,17 +113,17 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         return Err(anyhow::anyhow!("No audio captured"));
     }
 
-    let wav_bytes = encode_transcription_wav(&samples, handle.sample_rate, handle.channels)?;
+    let mp3_bytes = encode_transcription_mp3(&samples, handle.sample_rate, handle.channels)?;
     let input_duration_secs =
         samples.len() as f64 / handle.sample_rate as f64 / f64::from(handle.channels);
 
-    tracing::info!(
+    tracing::debug!(
         input_samples = samples.len(),
         input_sample_rate = handle.sample_rate,
         input_channels = handle.channels,
         duration_secs = format_args!("{input_duration_secs:.2}"),
-        wav_bytes = wav_bytes.len(),
-        wav_kib = format_args!("{:.2}", wav_bytes.len() as f64 / 1024.0),
+        mp3_bytes = mp3_bytes.len(),
+        mp3_kib = format_args!("{:.2}", mp3_bytes.len() as f64 / 1024.0),
         "Prepared transcription audio"
     );
 
@@ -134,19 +134,19 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     //         .duration_since(std::time::UNIX_EPOCH)
     //         .map(|d| d.as_secs())
     //         .unwrap_or(0);
-    //     let path = dir.join(format!("{ts}.wav"));
-    //     std::fs::write(&path, &wav_bytes).ok();
+    //     let path = dir.join(format!("{ts}.mp3"));
+    //     std::fs::write(&path, &mp3_bytes).ok();
     //     debug!(path = %path.display(), "saved debug audio");
     // }
 
-    tracing::info!(
-        "Transcribing audio with {} input samples at {} Hz across {} channel(s)",
+    tracing::debug!(
+        "Transcribing MP3 audio with {} input samples at {} Hz across {} channel(s)",
         samples.len(),
         handle.sample_rate,
         handle.channels
     );
     let now = std::time::Instant::now();
-    let transcript = match state.transcription_model.transcribe_wav(wav_bytes).await {
+    let transcript = match state.transcription_model.transcribe_mp3(mp3_bytes).await {
         Ok(transcript) => transcript,
         Err(err) => {
             set_tray_title(&app, None);
@@ -154,11 +154,11 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         }
     };
     let elapsed = now.elapsed();
-    tracing::info!("Transcription completed in {:.2?}: {transcript}", elapsed);
+    tracing::debug!("Transcription completed in {:.2?}: {transcript}", elapsed);
 
     let mut polished_transcript = None;
     if state.settings.lock().unwrap().polish {
-        tracing::info!("Polishing transcript: {transcript}");
+        tracing::debug!("Polishing transcript: {transcript}");
         polished_transcript = Some(
             state
                 .polish_model
@@ -166,7 +166,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
                 .await?,
         );
         let elapsed_total = now.elapsed();
-        tracing::info!(
+        tracing::debug!(
             "Polishing completed in {:.2?}, total time: {:.2?}",
             elapsed_total - elapsed,
             elapsed_total

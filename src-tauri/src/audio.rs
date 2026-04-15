@@ -1,10 +1,17 @@
 use anyhow::Result;
+use mp3lame_encoder::Bitrate;
+use mp3lame_encoder::Builder;
+use mp3lame_encoder::FlushNoGap;
+use mp3lame_encoder::Mode;
+use mp3lame_encoder::MonoPcm;
+use mp3lame_encoder::Quality;
 use std::io::Cursor;
 use std::sync::mpsc;
 use std::thread;
 
 const TRANSCRIPTION_SAMPLE_RATE: u32 = 16_000;
 const TRANSCRIPTION_CHANNELS: u16 = 1;
+const TRANSCRIPTION_MP3_BITRATE: Bitrate = Bitrate::Kbps32;
 
 pub enum SoundEffect {
     Record,
@@ -70,6 +77,16 @@ pub fn encode_transcription_wav(
     )
 }
 
+pub fn encode_transcription_mp3(
+    samples: &[f32],
+    sample_rate: u32,
+    channels: u16,
+) -> Result<Vec<u8>> {
+    let mono = downmix_to_mono(samples, channels);
+    let resampled = resample_linear(&mono, sample_rate, TRANSCRIPTION_SAMPLE_RATE);
+    encode_mp3_mono(&resampled, TRANSCRIPTION_SAMPLE_RATE)
+}
+
 pub fn encode_wav(samples: &[f32], sample_rate: u32, channels: u16) -> Result<Vec<u8>> {
     let spec = hound::WavSpec {
         channels,
@@ -88,6 +105,40 @@ pub fn encode_wav(samples: &[f32], sample_rate: u32, channels: u16) -> Result<Ve
         writer.finalize()?;
     }
     Ok(buf)
+}
+
+fn encode_mp3_mono(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>> {
+    let mut builder =
+        Builder::new().ok_or_else(|| anyhow::anyhow!("Failed to create LAME encoder"))?;
+    builder
+        .set_num_channels(TRANSCRIPTION_CHANNELS as u8)
+        .map_err(|err| anyhow::anyhow!("Failed to set MP3 channel count: {err}"))?;
+    builder
+        .set_sample_rate(sample_rate)
+        .map_err(|err| anyhow::anyhow!("Failed to set MP3 sample rate: {err}"))?;
+    builder
+        .set_mode(Mode::Mono)
+        .map_err(|err| anyhow::anyhow!("Failed to set MP3 mode: {err}"))?;
+    builder
+        .set_brate(TRANSCRIPTION_MP3_BITRATE)
+        .map_err(|err| anyhow::anyhow!("Failed to set MP3 bitrate: {err}"))?;
+    builder
+        .set_quality(Quality::Good)
+        .map_err(|err| anyhow::anyhow!("Failed to set MP3 quality: {err}"))?;
+
+    let mut encoder = builder
+        .build()
+        .map_err(|err| anyhow::anyhow!("Failed to initialize LAME encoder: {err}"))?;
+    let input = MonoPcm(samples);
+    let mut mp3 =
+        Vec::with_capacity(mp3lame_encoder::max_required_buffer_size(samples.len()) + 7200);
+    encoder
+        .encode_to_vec(input, &mut mp3)
+        .map_err(|err| anyhow::anyhow!("Failed to encode MP3 audio: {err}"))?;
+    encoder
+        .flush_to_vec::<FlushNoGap>(&mut mp3)
+        .map_err(|err| anyhow::anyhow!("Failed to finalize MP3 audio: {err}"))?;
+    Ok(mp3)
 }
 
 fn downmix_to_mono(samples: &[f32], channels: u16) -> Vec<f32> {
@@ -157,5 +208,16 @@ mod tests {
         assert_eq!(spec.bits_per_sample, 16);
         assert_eq!(spec.sample_format, hound::SampleFormat::Int);
         assert_eq!(reader.duration(), TRANSCRIPTION_SAMPLE_RATE);
+    }
+
+    #[test]
+    fn encodes_transcription_mp3_smaller_than_wav() {
+        let stereo = vec![0.25; 48_000 * 2];
+
+        let mp3 = encode_transcription_mp3(&stereo, 48_000, 2).unwrap();
+        let wav = encode_transcription_wav(&stereo, 48_000, 2).unwrap();
+
+        assert!(!mp3.is_empty());
+        assert!(mp3.len() < wav.len());
     }
 }
