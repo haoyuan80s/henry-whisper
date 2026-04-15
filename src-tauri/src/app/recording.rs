@@ -2,7 +2,11 @@ use anyhow::Result;
 use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 use tauri::Manager;
 
 use super::state::AppState;
@@ -13,6 +17,14 @@ use crate::audio::encode_transcription_mp3;
 use crate::audio::play_sound;
 
 const VOICE_THRESHOLD: f32 = 0.0001;
+/// How long to wait for the first voice chunk before starting anyway.
+const WARMUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long to wait for the audio thread to exit after stopping.
+const STREAM_STOP_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long to wait for the transcription API.
+const TRANSCRIPTION_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long to wait for the polish API.
+const POLISH_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn rms(data: &[f32]) -> f32 {
     let sum = data.iter().map(|x| x * x).sum::<f32>();
@@ -39,20 +51,22 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<()>>();
 
+    // Shared flag so we can force-start after the warmup timeout.
+    let warmed_up = Arc::new(AtomicBool::new(false));
+    let warmed_up_cb = warmed_up.clone();
+
     let join_handle = tokio::task::spawn_blocking(move || {
         let ready_tx = Mutex::new(Some(ready_tx));
-        let warmed_up = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let warmed_up_cb = warmed_up.clone();
 
         let stream = device
             .build_input_stream(
                 &config.into(),
                 move |data: &[f32], _| {
-                    if !warmed_up_cb.load(std::sync::atomic::Ordering::Relaxed) {
+                    if !warmed_up_cb.load(Ordering::Relaxed) {
                         if rms(data) < VOICE_THRESHOLD {
                             return;
                         }
-                        warmed_up_cb.store(true, std::sync::atomic::Ordering::Relaxed);
+                        warmed_up_cb.store(true, Ordering::Relaxed);
                     }
 
                     let _ = sample_tx.send(data.to_vec());
@@ -70,7 +84,17 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
         drop(stream);
     });
 
-    ready_rx.await??;
+    match tokio::time::timeout(WARMUP_TIMEOUT, ready_rx).await {
+        Ok(Ok(Ok(()))) => {}             // got voice, normal path
+        Ok(Ok(Err(e))) => return Err(e), // stream setup failed
+        Ok(Err(_)) => return Err(anyhow::anyhow!("Audio stream thread exited unexpectedly")),
+        Err(_) => {
+            // Timeout: no voice detected yet — force the warmup flag so the
+            // callback starts forwarding samples from now on and proceed.
+            tracing::warn!("No voice detected within {WARMUP_TIMEOUT:?}, starting anyway");
+            warmed_up.store(true, Ordering::Relaxed);
+        }
+    }
 
     *state.recording.lock().unwrap() = Some(RecordingHandle {
         sample_rx,
@@ -101,7 +125,7 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
 
     set_tray_title(&app, Some("Transcribing..."));
     handle.stop_tx.send(()).ok();
-    handle.join_handle.await.ok();
+    let _ = tokio::time::timeout(STREAM_STOP_TIMEOUT, handle.join_handle).await;
 
     let settings = state.settings.lock().unwrap().clone();
     if settings.play_sound {
@@ -148,11 +172,20 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     );
     let now = std::time::Instant::now();
     let transcription_model = state.transcription_model.lock().unwrap().clone();
-    let transcript = match transcription_model.transcribe_mp3(mp3_bytes).await {
-        Ok(transcript) => transcript,
-        Err(err) => {
+    let transcript = match tokio::time::timeout(
+        TRANSCRIPTION_TIMEOUT,
+        transcription_model.transcribe_mp3(mp3_bytes),
+    )
+    .await
+    {
+        Ok(Ok(t)) => t,
+        Ok(Err(err)) => {
             set_tray_title(&app, None);
             return Err(err);
+        }
+        Err(_) => {
+            set_tray_title(&app, None);
+            return Err(anyhow::anyhow!("Transcription timed out"));
         }
     };
     let elapsed = now.elapsed();
@@ -163,9 +196,12 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         tracing::debug!("Polishing transcript: {transcript}");
         let polish_model = state.polish_model.lock().unwrap().clone();
         polished_transcript = Some(
-            polish_model
-                .chat(include_str!("./polish.md"), &transcript)
-                .await?,
+            tokio::time::timeout(
+                POLISH_TIMEOUT,
+                polish_model.chat(include_str!("./polish.md"), &transcript),
+            )
+            .await
+            .map_err(|_| anyhow::anyhow!("Polish timed out"))??,
         );
         let elapsed_total = now.elapsed();
         tracing::debug!(
@@ -209,7 +245,7 @@ pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
     };
     set_tray_title(&app, None);
     handle.stop_tx.send(()).ok();
-    handle.join_handle.await.ok();
+    let _ = tokio::time::timeout(STREAM_STOP_TIMEOUT, handle.join_handle).await;
     let settings = state.settings.lock().unwrap().clone();
     if settings.play_sound {
         play_sound(SoundEffect::Cancel);
