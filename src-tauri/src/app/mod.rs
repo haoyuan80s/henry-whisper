@@ -35,19 +35,11 @@ pub fn run() {
 
             // Load persisted settings
             let settings = load_settings(app.handle());
-            let transcription_model = AiModel::new(
-                &settings.transcription_model.base_url,
-                &settings.transcription_model.model,
-            );
-            let polish_model = AiModel::new(
-                &settings.polish_model.base_url,
-                &settings.polish_model.model,
-            );
+            let model = AiModel::new(&settings.model.base_url, &settings.model.model);
             app.manage(AppState {
                 recording: Mutex::new(None),
                 settings: Mutex::new(settings.clone()),
-                transcription_model: Mutex::new(transcription_model),
-                polish_model: Mutex::new(polish_model),
+                model: Mutex::new(model),
                 clipboard: Mutex::new(arboard::Clipboard::new().expect("new clipboard")),
             });
 

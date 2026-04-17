@@ -19,18 +19,10 @@ pub fn save_settings(
     settings: AppSettings,
 ) -> Result<(), String> {
     let shortcut_setting = settings.shortcut.clone();
-    let transcription_model = AiModel::new(
-        &settings.transcription_model.base_url,
-        &settings.transcription_model.model,
-    );
-    let polish_model = AiModel::new(
-        &settings.polish_model.base_url,
-        &settings.polish_model.model,
-    );
+    let model = AiModel::new(&settings.model.base_url, &settings.model.model);
 
     *state.settings.lock().unwrap() = settings.clone();
-    *state.transcription_model.lock().unwrap() = transcription_model;
-    *state.polish_model.lock().unwrap() = polish_model;
+    *state.model.lock().unwrap() = model;
     persist_settings(&app, &settings)?;
     // Re-register shortcuts on the async runtime so we don't block the IPC
     // response (macOS Carbon APIs dispatch to the main thread internally).

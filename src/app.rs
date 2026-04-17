@@ -13,15 +13,13 @@ extern "C" {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct AppSettings {
-    transcription_model: AiModelSetting,
-    polish_model: AiModelSetting,
+    model: ModelSetting,
     shortcut: ShortcutSetting,
-    polish: bool,
     play_sound: bool,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
-struct AiModelSetting {
+struct ModelSetting {
     base_url: String,
     model: String,
 }
@@ -114,29 +112,21 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
 }
 
 fn current_settings(
-    transcription_base_url: ReadSignal<String>,
-    transcription_model: ReadSignal<String>,
-    polish_base_url: ReadSignal<String>,
-    polish_model: ReadSignal<String>,
+    model_base_url: ReadSignal<String>,
+    model_name: ReadSignal<String>,
     rec_shortcut: ReadSignal<String>,
     cancel_shortcut: ReadSignal<String>,
-    polish: ReadSignal<bool>,
     play_sound: ReadSignal<bool>,
 ) -> AppSettings {
     AppSettings {
-        transcription_model: AiModelSetting {
-            base_url: transcription_base_url.get(),
-            model: transcription_model.get(),
-        },
-        polish_model: AiModelSetting {
-            base_url: polish_base_url.get(),
-            model: polish_model.get(),
+        model: ModelSetting {
+            base_url: model_base_url.get(),
+            model: model_name.get(),
         },
         shortcut: ShortcutSetting {
             recording: rec_shortcut.get(),
             cancel: cancel_shortcut.get(),
         },
-        polish: polish.get(),
         play_sound: play_sound.get(),
     }
 }
@@ -177,13 +167,10 @@ fn persist_settings(
 
 #[component]
 pub fn App() -> impl IntoView {
-    let (transcription_base_url, set_transcription_base_url) = signal(String::new());
-    let (transcription_model, set_transcription_model) = signal(String::new());
-    let (polish_base_url, set_polish_base_url) = signal(String::new());
-    let (polish_model, set_polish_model) = signal(String::new());
+    let (model_base_url, set_model_base_url) = signal(String::new());
+    let (model_name, set_model_name) = signal(String::new());
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
-    let (polish, set_polish) = signal(true);
     let (play_sound, set_play_sound) = signal(true);
     let (saving, set_saving) = signal(false);
     let (error, set_error) = signal(None::<String>);
@@ -197,13 +184,10 @@ pub fn App() -> impl IntoView {
             if let Ok(val) = invoke("get_settings", JsValue::NULL).await {
                 if let Ok(s) = serde_wasm_bindgen::from_value::<AppSettings>(val) {
                     set_last_saved.set(Some(s.clone()));
-                    set_transcription_base_url.set(s.transcription_model.base_url);
-                    set_transcription_model.set(s.transcription_model.model);
-                    set_polish_base_url.set(s.polish_model.base_url);
-                    set_polish_model.set(s.polish_model.model);
+                    set_model_base_url.set(s.model.base_url);
+                    set_model_name.set(s.model.model);
                     set_rec_shortcut.set(s.shortcut.recording);
                     set_cancel_shortcut.set(s.shortcut.cancel);
-                    set_polish.set(s.polish);
                     set_play_sound.set(s.play_sound);
                     set_loaded.set(true);
                 }
@@ -237,13 +221,10 @@ pub fn App() -> impl IntoView {
         }
 
         let settings = current_settings(
-            transcription_base_url,
-            transcription_model,
-            polish_base_url,
-            polish_model,
+            model_base_url,
+            model_name,
             rec_shortcut,
             cancel_shortcut,
-            polish,
             play_sound,
         );
 
@@ -256,13 +237,10 @@ pub fn App() -> impl IntoView {
 
     let close = move |_| {
         let settings = current_settings(
-            transcription_base_url,
-            transcription_model,
-            polish_base_url,
-            polish_model,
+            model_base_url,
+            model_name,
             rec_shortcut,
             cancel_shortcut,
-            polish,
             play_sound,
         );
 
@@ -296,47 +274,24 @@ pub fn App() -> impl IntoView {
             <h1 class="settings-title">"Henry Whisper"</h1>
 
             <div class="field">
-                <label class="label">"Transcription Base URL"</label>
+                <label class="label">"Model Base URL"</label>
                 <input
                     class="input"
                     type="text"
-                    placeholder="http://192.168.86.29:8001/v1"
-                    prop:value=move || transcription_base_url.get()
-                    on:input=move |ev| set_transcription_base_url.set(event_target_value(&ev))
+                    placeholder="https://gemini.gooseread.com/v1"
+                    prop:value=move || model_base_url.get()
+                    on:input=move |ev| set_model_base_url.set(event_target_value(&ev))
                 />
             </div>
 
             <div class="field">
-                <label class="label">"Transcription Model"</label>
-                <input
-                    class="input"
-                    type="text"
-                    placeholder="Qwen/Qwen3-ASR-0.6B"
-                    prop:value=move || transcription_model.get()
-                    on:input=move |ev| set_transcription_model.set(event_target_value(&ev))
-                />
-            </div>
-
-
-            <div class="field">
-                <label class="label">"Polish Base URL"</label>
-                <input
-                    class="input"
-                    type="text"
-                    placeholder="http://192.168.86.29:8000/v1"
-                    prop:value=move || polish_base_url.get()
-                    on:input=move |ev| set_polish_base_url.set(event_target_value(&ev))
-                />
-            </div>
-
-            <div class="field">
-                <label class="label">"Polish Model"</label>
+                <label class="label">"Model"</label>
                 <input
                     class="input"
                     type="text"
                     placeholder="google/gemma-4-E4B-it"
-                    prop:value=move || polish_model.get()
-                    on:input=move |ev| set_polish_model.set(event_target_value(&ev))
+                    prop:value=move || model_name.get()
+                    on:input=move |ev| set_model_name.set(event_target_value(&ev))
                 />
             </div>
 
@@ -357,18 +312,6 @@ pub fn App() -> impl IntoView {
                         type="checkbox"
                         prop:checked=move || play_sound.get()
                         on:change=move |ev| set_play_sound.set(event_target_checked(&ev))
-                    />
-                    <span class="toggle-track"></span>
-                </label>
-            </div>
-
-            <div class="field toggle-field">
-                <label class="label">"Polish transcript"</label>
-                <label class="toggle">
-                    <input
-                        type="checkbox"
-                        prop:checked=move || polish.get()
-                        on:change=move |ev| set_polish.set(event_target_checked(&ev))
                     />
                     <span class="toggle-track"></span>
                 </label>

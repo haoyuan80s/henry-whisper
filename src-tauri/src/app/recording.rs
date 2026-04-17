@@ -23,8 +23,6 @@ const WARMUP_TIMEOUT: Duration = Duration::from_secs(10);
 const STREAM_STOP_TIMEOUT: Duration = Duration::from_secs(3);
 /// How long to wait for the transcription API.
 const TRANSCRIPTION_TIMEOUT: Duration = Duration::from_secs(60);
-/// How long to wait for the polish API.
-const POLISH_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn rms(data: &[f32]) -> f32 {
     let sum = data.iter().map(|x| x * x).sum::<f32>();
@@ -152,18 +150,6 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         "Prepared transcription audio"
     );
 
-    // if std::env::var("HENRY_WHISPER_DEBUG_AUDIO").as_deref() == Ok("1") {
-    //     let dir = std::path::Path::new("/tmp/henry-whisper");
-    //     std::fs::create_dir_all(dir).ok();
-    //     let ts = std::time::SystemTime::now()
-    //         .duration_since(std::time::UNIX_EPOCH)
-    //         .map(|d| d.as_secs())
-    //         .unwrap_or(0);
-    //     let path = dir.join(format!("{ts}.mp3"));
-    //     std::fs::write(&path, &mp3_bytes).ok();
-    //     debug!(path = %path.display(), "saved debug audio");
-    // }
-
     tracing::debug!(
         "Transcribing MP3 audio with {} input samples at {} Hz across {} channel(s)",
         samples.len(),
@@ -171,10 +157,11 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         handle.channels
     );
     let now = std::time::Instant::now();
-    let transcription_model = state.transcription_model.lock().unwrap().clone();
+    let settings = state.settings.lock().unwrap().clone();
+    let model = state.model.lock().unwrap().clone();
     let transcript = match tokio::time::timeout(
         TRANSCRIPTION_TIMEOUT,
-        transcription_model.transcribe_mp3(mp3_bytes),
+        model.transcribe_mp3_with_prompt(include_str!("./transcribe_and_post.md"), mp3_bytes),
     )
     .await
     {
@@ -189,33 +176,16 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         }
     };
     let elapsed = now.elapsed();
-    tracing::debug!("Transcription completed in {:.2?}: {transcript}", elapsed);
-
-    let mut polished_transcript = None;
-    if state.settings.lock().unwrap().polish {
-        tracing::debug!("Polishing transcript: {transcript}");
-        let polish_model = state.polish_model.lock().unwrap().clone();
-        polished_transcript = Some(
-            tokio::time::timeout(
-                POLISH_TIMEOUT,
-                polish_model.chat(include_str!("./polish.md"), &transcript),
-            )
-            .await
-            .map_err(|_| anyhow::anyhow!("Polish timed out"))??,
-        );
-        let elapsed_total = now.elapsed();
-        tracing::debug!(
-            "Polishing completed in {:.2?}, total time: {:.2?}",
-            elapsed_total - elapsed,
-            elapsed_total
-        );
-    };
+    tracing::debug!(
+        "Single-model transcription completed in {:.2?}: {transcript}",
+        elapsed
+    );
 
     state
         .clipboard
         .lock()
         .expect("lock clipboard")
-        .set_text(polished_transcript.unwrap_or(transcript))?;
+        .set_text(transcript)?;
 
     if settings.play_sound {
         play_sound(SoundEffect::Transcribe);
