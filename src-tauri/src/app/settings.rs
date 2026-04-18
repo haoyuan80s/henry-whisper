@@ -1,4 +1,5 @@
-pub use henry_whisper_shared::{AppSettings, ShortcutSetting};
+pub use henry_whisper_shared::AppSettings;
+pub use henry_whisper_shared::ShortcutSetting;
 use tauri::Manager;
 
 pub fn settings_path(app: &tauri::AppHandle) -> std::path::PathBuf {

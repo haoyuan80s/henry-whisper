@@ -6,8 +6,6 @@ use mp3lame_encoder::Mode;
 use mp3lame_encoder::MonoPcm;
 use mp3lame_encoder::Quality;
 use std::io::Cursor;
-use std::sync::mpsc;
-use std::thread;
 
 const TRANSCRIPTION_SAMPLE_RATE: u32 = 16_000;
 const TRANSCRIPTION_CHANNELS: u16 = 1;
@@ -50,6 +48,7 @@ pub fn play_sound(effect: SoundEffect) {
     });
 }
 
+#[allow(dead_code)]
 pub fn encode_transcription_wav(
     samples: &[f32],
     sample_rate: u32,
@@ -74,6 +73,7 @@ pub fn encode_transcription_mp3(
     encode_mp3_mono(&resampled, TRANSCRIPTION_SAMPLE_RATE)
 }
 
+#[allow(dead_code)]
 pub fn encode_wav(samples: &[f32], sample_rate: u32, channels: u16) -> Result<Vec<u8>> {
     let spec = hound::WavSpec {
         channels,
