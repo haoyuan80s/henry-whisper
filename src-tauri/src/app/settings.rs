@@ -1,41 +1,5 @@
-use serde::Deserialize;
-use serde::Serialize;
+pub use henry_whisper_shared::{AppSettings, ShortcutSetting};
 use tauri::Manager;
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct AppSettings {
-    pub model: ModelSetting,
-    pub shortcut: ShortcutSetting,
-    pub play_sound: bool,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            model: ModelSetting {
-                base_url: "https://gemini.gooseread.com/v1".to_string(),
-                model: "google/gemma-4-E4B-it".to_string(),
-            },
-            shortcut: ShortcutSetting {
-                recording: "CmdOrCtrl+1".to_string(),
-                cancel: "CmdOrCtrl+2".to_string(),
-            },
-            play_sound: true,
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ModelSetting {
-    pub base_url: String,
-    pub model: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ShortcutSetting {
-    pub recording: String,
-    pub cancel: String,
-}
 
 pub fn settings_path(app: &tauri::AppHandle) -> std::path::PathBuf {
     app.path()

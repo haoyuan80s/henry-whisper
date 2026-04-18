@@ -161,7 +161,8 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     let model = state.model.lock().unwrap().clone();
     let transcript = match tokio::time::timeout(
         TRANSCRIPTION_TIMEOUT,
-        model.transcribe_mp3_with_prompt(include_str!("./transcribe_and_post.md"), mp3_bytes),
+        // model.transcribe_mp3_with_prompt(include_str!("./transcribe_and_post.md"), mp3_bytes),
+        model.transcribe_mp3(mp3_bytes),
     )
     .await
     {

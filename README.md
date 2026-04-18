@@ -54,3 +54,7 @@ Settings are saved automatically to the app config directory.
 ## License
 
 Apache-2.0
+
+# TODOS
+
+- [ ] add polish model so that I can inject user's inputs

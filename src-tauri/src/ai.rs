@@ -1,9 +1,9 @@
 use async_openai::Client;
 use async_openai::config::OpenAIConfig;
-use async_openai::types::chat::CreateChatCompletionResponse;
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
-use serde_json::json;
+use async_openai::types::InputSource;
+use async_openai::types::audio::AudioInput;
+use async_openai::types::audio::AudioResponseFormat;
+use async_openai::types::audio::CreateTranscriptionRequestArgs;
 
 #[derive(Clone)]
 pub struct AiModel {
@@ -21,56 +21,23 @@ impl AiModel {
         }
     }
 
-    pub async fn transcribe_mp3_with_prompt(
-        &self,
-        system_message: &str,
-        mp3_bytes: Vec<u8>,
-    ) -> anyhow::Result<String> {
-        self.transcribe_audio(mp3_bytes, system_message).await
-    }
-
-    async fn transcribe_audio(
-        &self,
-        audio_bytes: Vec<u8>,
-        system_message: &str,
-    ) -> anyhow::Result<String> {
-        let audio_b64 = BASE64_STANDARD.encode(&audio_bytes);
-        let mut messages = Vec::new();
-        messages.push(json!({
-            "role": "system",
-            "content": system_message,
-        }));
-
-        let mut content = vec![json!({
-            "type": "text",
-            "text": "Process this audio and return only the final transcript.",
-        })];
-        content.push(json!({
-            "type": "input_audio",
-            "input_audio": {
-                "data": audio_b64,
-                "format": "mp3"
-            }
-        }));
-        messages.push(json!({
-            "role": "user",
-            "content": content,
-        }));
-
-        let resp: CreateChatCompletionResponse = self
+    pub async fn transcribe_mp3(&self, mp3_bytes: Vec<u8>) -> anyhow::Result<String> {
+        let mut request = CreateTranscriptionRequestArgs::default();
+        request.file(AudioInput {
+            source: InputSource::Bytes {
+                filename: "audio.mp3".to_string(),
+                bytes: mp3_bytes.into(),
+            },
+        });
+        request.model(self.model.clone());
+        request.response_format(AudioResponseFormat::Json);
+        let resp = self
             .client
-            .chat()
-            .create_byot(json!({
-                "model": self.model,
-                "messages": messages,
-            }))
+            .audio()
+            .transcription()
+            .create(request.build()?)
             .await?;
-        let msg = resp.choices[0]
-            .clone()
-            .message
-            .content
-            .unwrap_or_else(|| "No transcript".to_string());
-        Ok(prune_transcript(&msg).to_string())
+        Ok(prune_transcript(&resp.text).to_string())
     }
 }
 

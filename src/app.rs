@@ -1,7 +1,6 @@
+use henry_whisper_shared::{AppSettings, ShortcutSetting, TranscriptionModelSetting};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde::Deserialize;
-use serde::Serialize;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
@@ -9,25 +8,6 @@ use wasm_bindgen::prelude::*;
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], catch)]
     async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
-}
-
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-struct AppSettings {
-    model: ModelSetting,
-    shortcut: ShortcutSetting,
-    play_sound: bool,
-}
-
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-struct ModelSetting {
-    base_url: String,
-    model: String,
-}
-
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-struct ShortcutSetting {
-    recording: String,
-    cancel: String,
 }
 
 #[component]
@@ -119,7 +99,7 @@ fn current_settings(
     play_sound: ReadSignal<bool>,
 ) -> AppSettings {
     AppSettings {
-        model: ModelSetting {
+        transcription_model: TranscriptionModelSetting {
             base_url: model_base_url.get(),
             model: model_name.get(),
         },
@@ -184,8 +164,8 @@ pub fn App() -> impl IntoView {
             if let Ok(val) = invoke("get_settings", JsValue::NULL).await {
                 if let Ok(s) = serde_wasm_bindgen::from_value::<AppSettings>(val) {
                     set_last_saved.set(Some(s.clone()));
-                    set_model_base_url.set(s.model.base_url);
-                    set_model_name.set(s.model.model);
+                    set_model_base_url.set(s.transcription_model.base_url);
+                    set_model_name.set(s.transcription_model.model);
                     set_rec_shortcut.set(s.shortcut.recording);
                     set_cancel_shortcut.set(s.shortcut.cancel);
                     set_play_sound.set(s.play_sound);

@@ -35,7 +35,10 @@ pub fn run() {
 
             // Load persisted settings
             let settings = load_settings(app.handle());
-            let model = AiModel::new(&settings.model.base_url, &settings.model.model);
+            let model = AiModel::new(
+                &settings.transcription_model.base_url,
+                &settings.transcription_model.model,
+            );
             app.manage(AppState {
                 recording: Mutex::new(None),
                 settings: Mutex::new(settings.clone()),

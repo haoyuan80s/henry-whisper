@@ -19,7 +19,10 @@ pub fn save_settings(
     settings: AppSettings,
 ) -> Result<(), String> {
     let shortcut_setting = settings.shortcut.clone();
-    let model = AiModel::new(&settings.model.base_url, &settings.model.model);
+    let model = AiModel::new(
+        &settings.transcription_model.base_url,
+        &settings.transcription_model.model,
+    );
 
     *state.settings.lock().unwrap() = settings.clone();
     *state.model.lock().unwrap() = model;
