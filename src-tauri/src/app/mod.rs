@@ -116,6 +116,11 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::hide_settings_window,
+            commands::frontend_trace,
+            commands::frontend_debug,
+            commands::frontend_info,
+            commands::frontend_warn,
+            commands::frontend_error,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

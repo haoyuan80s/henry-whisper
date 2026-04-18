@@ -8,6 +8,31 @@ use super::shortcuts::register_shortcuts;
 use super::state::AppState;
 
 #[tauri::command]
+pub fn frontend_trace(message: String) {
+    tracing::trace!("frontend: {}", message);
+}
+
+#[tauri::command]
+pub fn frontend_debug(message: String) {
+    tracing::debug!("frontend: {}", message);
+}
+
+#[tauri::command]
+pub fn frontend_info(message: String) {
+    tracing::info!("frontend: {}", message);
+}
+
+#[tauri::command]
+pub fn frontend_warn(message: String) {
+    tracing::warn!("frontend: {}", message);
+}
+
+#[tauri::command]
+pub fn frontend_error(message: String) {
+    tracing::error!("frontend: {}", message);
+}
+
+#[tauri::command]
 pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
     state.settings.lock().unwrap().clone()
 }
