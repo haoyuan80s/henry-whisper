@@ -33,6 +33,11 @@ Default transcription config:
 - Transcripts are copied to the clipboard; no transcript history is stored
 - If your endpoint requires auth, set the appropriate API key in the environment before launch
 
+## Todo
+
+- [ ] polish model
+- [ ] test on window/linux
+
 ## License
 
 Apache-2.0
