@@ -5,8 +5,6 @@ Tiny Tauri desktop dictation app: record from the tray, transcribe with an OpenA
 ## Run
 
 ```sh
-rustup target add wasm32-unknown-unknown
-cargo install trunk
 cargo install tauri-cli --locked
 cargo tauri dev
 ```
