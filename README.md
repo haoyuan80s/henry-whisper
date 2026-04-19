@@ -1,60 +1,40 @@
 # Henry Whisper
 
-Henry Whisper is a tiny desktop dictation app. It sits in the menu bar, records from your microphone, sends the audio to a single OpenAI-compatible model, applies transcript cleanup in the same request, and copies the result to your clipboard.
+Tiny Tauri desktop dictation app: record from the tray, transcribe with an OpenAI-compatible audio endpoint, and copy the result straight to the clipboard.
 
-Press `CmdOrCtrl+1` to start recording, press it again to transcribe, then paste anywhere. Press `CmdOrCtrl+2` to cancel.
-
-## Features
-
-- Menu bar / system tray app
-- Global shortcuts
-- Single OpenAI-compatible audio model
-- Automatic clipboard copy
-- Optional sound cues
-- Auto-saved settings
-
-## Building
-
-Install the Rust WASM target, Trunk, and the Tauri CLI:
+## Run
 
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install trunk
 cargo install tauri-cli --locked
-```
-
-Run the app:
-
-```sh
 cargo tauri dev
 ```
 
-Build a release:
+Build a release with:
 
 ```sh
 cargo tauri build
 ```
 
-## Settings
+## Use
 
-Open the settings window from the tray menu to configure the model endpoint, model name, shortcuts, and sound cues.
+- `CmdOrCtrl+1`: start recording, then stop and transcribe
+- `CmdOrCtrl+2`: cancel recording
+- Open Settings from the tray to change the endpoint, model, shortcuts, and sound cues
 
-Default:
+Default transcription config:
 
-- Model: `google/gemma-4-E4B-it` at `https://gemini.gooseread.com/v1`
-
-Settings are saved automatically to the app config directory.
+- Base URL: `https://lulu.gooseread.com/v1`
+- Model: `CohereLabs/cohere-transcribe-03-2026`
 
 ## Notes
 
-- On macOS, Henry Whisper runs as an accessory app in the menu bar.
-- The first recording may ask for microphone permission.
-- Transcripts are copied to the clipboard; no transcript history is stored.
+- The app stores settings in the app config directory as `settings.json`
+- The first recording may trigger microphone permission prompts
+- Transcripts are copied to the clipboard; no transcript history is stored
+- If your endpoint requires auth, set the appropriate API key in the environment before launch
 
 ## License
 
 Apache-2.0
-
-# TODOS
-
-- [ ] add polish model so that I can inject user's inputs
