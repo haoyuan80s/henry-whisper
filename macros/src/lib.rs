@@ -2,11 +2,11 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
-    FnArg, ForeignItemFn, ItemFn, PatType, ReturnType, Type,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
     token::Comma,
+    FnArg, ForeignItemFn, ItemFn, PatType, ReturnType, Type,
 };
 
 // ── tauri_commands! ──────────────────────────────────────────────────────────
@@ -50,18 +50,27 @@ pub fn ipc_command(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .sig
         .inputs
         .iter()
-        .filter_map(|a| if let FnArg::Typed(pt) = a { Some(pt) } else { None })
+        .filter_map(|a| {
+            if let FnArg::Typed(pt) = a {
+                Some(pt)
+            } else {
+                None
+            }
+        })
         .filter(|pt| !is_tauri_type(&pt.ty))
         .collect();
 
-    let params_init: Vec<TokenStream2> = ipc_params.iter().map(|pt| {
-        let pname = match &*pt.pat {
-            syn::Pat::Ident(pi) => pi.ident.to_string(),
-            _ => "_".to_string(),
-        };
-        let ptype = type_str(&pt.ty);
-        quote! { (#pname, #ptype) }
-    }).collect();
+    let params_init: Vec<TokenStream2> = ipc_params
+        .iter()
+        .map(|pt| {
+            let pname = match &*pt.pat {
+                syn::Pat::Ident(pi) => pi.ident.to_string(),
+                _ => "_".to_string(),
+            };
+            let ptype = type_str(&pt.ty);
+            quote! { (#pname, #ptype) }
+        })
+        .collect();
 
     let ret_expr = match &func.sig.output {
         ReturnType::Default => quote! { ::std::option::Option::None },
@@ -197,18 +206,29 @@ fn gen_inline_binding(f: &ForeignItemFn) -> TokenStream2 {
         .sig
         .inputs
         .iter()
-        .filter_map(|a| if let FnArg::Typed(pt) = a { Some(pt) } else { None })
+        .filter_map(|a| {
+            if let FnArg::Typed(pt) = a {
+                Some(pt)
+            } else {
+                None
+            }
+        })
         .collect();
 
     let sig_params: Vec<TokenStream2> = params
         .iter()
-        .map(|pt| { let p = &pt.pat; let t = normalize_ty(&pt.ty); quote! { #p: #t } })
+        .map(|pt| {
+            let p = &pt.pat;
+            let t = normalize_ty(&pt.ty);
+            quote! { #p: #t }
+        })
         .collect();
 
-    let args_expr = if params.is_empty() {
-        quote! { ::wasm_bindgen::JsValue::NULL }
-    } else {
-        let fields: Vec<TokenStream2> = params.iter().map(|pt| {
+    let args_expr =
+        if params.is_empty() {
+            quote! { ::wasm_bindgen::JsValue::NULL }
+        } else {
+            let fields: Vec<TokenStream2> = params.iter().map(|pt| {
             if let syn::Pat::Ident(pi) = &*pt.pat {
                 let k = pi.ident.to_string(); let v = &pi.ident;
                 quote! { #k: #v }
@@ -216,17 +236,21 @@ fn gen_inline_binding(f: &ForeignItemFn) -> TokenStream2 {
                 quote! { compile_error!("tauri_commands: param must be a plain identifier") }
             }
         }).collect();
-        quote! {
-            ::serde_wasm_bindgen::to_value(&::serde_json::json!({ #(#fields),* }))
-                .map_err(|e| ::wasm_bindgen::JsValue::from_str(&e.to_string()))?
-        }
-    };
+            quote! {
+                ::serde_wasm_bindgen::to_value(&::serde_json::json!({ #(#fields),* }))
+                    .map_err(|e| ::wasm_bindgen::JsValue::from_str(&e.to_string()))?
+            }
+        };
 
     let ret_ty = match &f.sig.output {
         ReturnType::Default => None,
         ReturnType::Type(_, ty) => {
             let inner = unwrap_result(ty);
-            if is_unit(inner) { None } else { Some(inner) }
+            if is_unit(inner) {
+                None
+            } else {
+                Some(inner)
+            }
         }
     };
 

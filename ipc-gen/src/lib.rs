@@ -20,7 +20,10 @@ impl Default for IpcBuilder {
 
 impl IpcBuilder {
     pub fn new() -> Self {
-        Self { header: String::new(), commands: Vec::new() }
+        Self {
+            header: String::new(),
+            commands: Vec::new(),
+        }
     }
 
     /// Lines prepended after the auto-generated banner (e.g. `use` statements).
