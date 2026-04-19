@@ -1,11 +1,10 @@
-mod ipc;
-
 use henry_whisper_shared::{AppSettings, ShortcutSetting, TranscriptionModelSetting};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
+use wasm_bindgen::JsCast;
 
-use crate::app::ipc::{
+use crate::ipc::{
     frontend_debug, frontend_error, frontend_info, frontend_warn, get_settings,
     hide_settings_window, save_settings,
 };
@@ -19,6 +18,11 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
         ev.stop_propagation();
 
         let key = ev.key();
+
+        let key2 = key.clone();
+        spawn_local(async move {
+            let _ = frontend_debug(&format!("key: {:#?}", key2)).await;
+        });
 
         // Ignore bare modifier key presses
         if matches!(
@@ -64,6 +68,11 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
 
         set_value.set(parts.join("+"));
         set_recording.set(false);
+        if let Some(target) = ev.target() {
+            if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
+                let _ = input.blur();
+            }
+        }
     };
 
     view! {
@@ -85,7 +94,6 @@ fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -
                 if recording.get_untracked() {
                     handle_keydown(ev);
                 }
-                set_recording.set(false);
             }
             on:blur=move |_| set_recording.set(false)
         />
@@ -116,7 +124,6 @@ fn persist_settings(
     settings: AppSettings,
     request_id: u64,
     save_request_id: ReadSignal<u64>,
-    set_saving: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     set_last_saved: WriteSignal<Option<AppSettings>>,
     on_saved: impl FnOnce() + 'static,
@@ -138,10 +145,6 @@ fn persist_settings(
                 }
             }
         }
-
-        if save_request_id.get_untracked() == request_id {
-            set_saving.set(false);
-        }
     });
 }
 
@@ -152,7 +155,6 @@ pub fn App() -> impl IntoView {
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
     let (play_sound, set_play_sound) = signal(true);
-    let (saving, set_saving) = signal(false);
     let (error, set_error) = signal(None::<String>);
     let (loaded, set_loaded) = signal(false);
     let (last_saved, set_last_saved) = signal(None::<AppSettings>);
@@ -184,7 +186,6 @@ pub fn App() -> impl IntoView {
         Duration::from_millis(550),
         move |settings: AppSettings| {
             set_error.set(None);
-            set_saving.set(true);
             let request_id = save_request_id.get_untracked() + 1;
             set_save_request_id.set(request_id);
 
@@ -192,7 +193,6 @@ pub fn App() -> impl IntoView {
                 settings,
                 request_id,
                 save_request_id,
-                set_saving,
                 set_error,
                 set_last_saved,
                 || {},
@@ -231,14 +231,12 @@ pub fn App() -> impl IntoView {
 
         if loaded.get_untracked() && last_saved.get_untracked().as_ref() != Some(&settings) {
             set_error.set(None);
-            set_saving.set(true);
             let request_id = save_request_id.get_untracked() + 1;
             set_save_request_id.set(request_id);
             persist_settings(
                 settings,
                 request_id,
                 save_request_id,
-                set_saving,
                 set_error,
                 set_last_saved,
                 || {
@@ -307,17 +305,6 @@ pub fn App() -> impl IntoView {
             })}
 
             <div class="actions">
-                <div class="save-status">
-                    {move || {
-                        if saving.get() {
-                            "Saving..."
-                        } else if error.get().is_some() {
-                            "Could not save"
-                        } else {
-                            "Saved"
-                        }
-                    }}
-                </div>
                 <button class="btn-save" on:click=close>"Done"</button>
             </div>
         </div>

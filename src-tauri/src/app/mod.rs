@@ -144,6 +144,6 @@ fn build_ipc() {
             commands::save_settings,
             commands::hide_settings_window,
         ])
-        .export("../src/app/ipc_generated.rs")
+        .export("../src/ipc/generated.rs")
         .expect("failed to write ipc_generated.rs");
 }
