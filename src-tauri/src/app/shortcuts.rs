@@ -1,39 +1,61 @@
-use super::recording::do_cancel_recording;
-use super::recording::do_record_or_transcribe;
+use super::recording::{do_cancel_recording, do_record_or_transcribe};
 use crate::app::settings::ShortcutSetting;
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
-use tauri_plugin_global_shortcut::ShortcutState;
+use tauri::Manager;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
+
+pub(super) fn handle_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
+    if event.state() != ShortcutState::Pressed {
+        return;
+    }
+
+    let settings = app
+        .state::<super::state::AppState>()
+        .settings
+        .lock()
+        .unwrap()
+        .shortcut
+        .clone();
+
+    let Ok(record_sc) = settings.recording.parse::<Shortcut>() else {
+        return;
+    };
+    let Ok(cancel_sc) = settings.cancel.parse::<Shortcut>() else {
+        return;
+    };
+
+    let app = app.clone();
+    if shortcut == &record_sc {
+        tracing::warn!("{shortcut} pressed");
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = do_record_or_transcribe(app).await {
+                eprintln!("record_or_transcribe: {e}");
+            }
+        });
+    } else if shortcut == &cancel_sc {
+        tracing::warn!("{shortcut} pressed");
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = do_cancel_recording(app).await {
+                eprintln!("do_cancel_recording: {e}");
+            }
+        });
+    }
+}
 
 pub fn register_shortcuts(app: &tauri::AppHandle, setting: &ShortcutSetting) {
     let gs = app.global_shortcut();
     gs.unregister_all().ok();
 
-    let recording: &str = &setting.recording;
-    let cancel: &str = &setting.cancel;
-
-    if let Err(e) = gs.on_shortcut(recording, |app, _, event| {
-        if event.state == ShortcutState::Pressed {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = do_record_or_transcribe(app).await {
-                    eprintln!("record_or_transcribe: {e}");
-                }
-            });
-        }
-    }) {
-        eprintln!("Failed to register record/transcribe shortcut '{recording}': {e}");
+    if let Err(e) = gs.register(setting.recording.as_str()) {
+        eprintln!(
+            "Failed to register record/transcribe shortcut '{}': {e}",
+            setting.recording
+        );
     }
 
-    if let Err(e) = gs.on_shortcut(cancel, |app, _, event| {
-        if event.state == ShortcutState::Pressed {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = do_cancel_recording(app).await {
-                    eprintln!("do_cancel_recording: {e}");
-                }
-            });
-        }
-    }) {
-        eprintln!("Failed to register cancel shortcut '{cancel}': {e}");
+    if let Err(e) = gs.register(setting.cancel.as_str()) {
+        eprintln!(
+            "Failed to register cancel shortcut '{}': {e}",
+            setting.cancel
+        );
     }
 }

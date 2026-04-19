@@ -46,12 +46,6 @@ pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
 
 #[ipc_command]
 #[tauri::command]
-pub fn get_platform() -> String {
-    tauri_plugin_os::platform().to_string()
-}
-
-#[ipc_command]
-#[tauri::command]
 pub fn save_settings(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,

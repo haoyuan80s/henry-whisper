@@ -33,22 +33,16 @@ pub async fn frontend_error(message: &str) -> ::std::result::Result<(), ::wasm_b
     Ok(())
 }
 
-pub async fn get_settings() -> ::std::result::Result<AppSettings, ::wasm_bindgen::JsValue> {
-    let __r = invoke("get_settings", ::wasm_bindgen::JsValue::NULL).await?;
-    ::serde_wasm_bindgen::from_value(__r)
-        .map_err(|e| ::wasm_bindgen::JsValue::from_str(&e.to_string()))
-}
-
-pub async fn get_platform() -> ::std::result::Result<String, ::wasm_bindgen::JsValue> {
-    let __r = invoke("get_platform", ::wasm_bindgen::JsValue::NULL).await?;
-    ::serde_wasm_bindgen::from_value(__r)
-        .map_err(|e| ::wasm_bindgen::JsValue::from_str(&e.to_string()))
-}
-
 pub async fn save_settings(settings: AppSettings) -> ::std::result::Result<(), ::wasm_bindgen::JsValue> {
     invoke("save_settings", ::serde_wasm_bindgen::to_value(&::serde_json::json!({ "settings": settings }))
         .map_err(|e| ::wasm_bindgen::JsValue::from_str(&e.to_string()))?).await?;
     Ok(())
+}
+
+pub async fn get_settings() -> ::std::result::Result<AppSettings, ::wasm_bindgen::JsValue> {
+    let __r = invoke("get_settings", ::wasm_bindgen::JsValue::NULL).await?;
+    ::serde_wasm_bindgen::from_value(__r)
+        .map_err(|e| ::wasm_bindgen::JsValue::from_str(&e.to_string()))
 }
 
 pub async fn hide_settings_window() -> ::std::result::Result<(), ::wasm_bindgen::JsValue> {

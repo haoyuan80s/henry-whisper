@@ -19,8 +19,8 @@ cargo tauri build
 
 ## Use
 
-- `CmdOrCtrl+1`: start recording, then stop and transcribe
-- `CmdOrCtrl+2`: cancel recording
+- `Ctrl+1`: start recording, then stop and transcribe
+- `Ctrl+2`: cancel recording
 - Open Settings from the tray to change the endpoint, model, shortcuts, and sound cues
 
 Default transcription config:

@@ -32,8 +32,8 @@ pub struct ShortcutSetting {
 impl Default for ShortcutSetting {
     fn default() -> Self {
         Self {
-            recording: "CmdOrCtrl+1".to_string(),
-            cancel: "CmdOrCtrl+2".to_string(),
+            recording: "Ctrl+1".to_string(),
+            cancel: "Ctrl+2".to_string(),
         }
     }
 }
