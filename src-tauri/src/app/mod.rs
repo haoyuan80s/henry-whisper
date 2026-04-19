@@ -29,6 +29,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_os::init())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -114,6 +115,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
+            commands::get_platform,
             commands::save_settings,
             commands::hide_settings_window,
             commands::frontend_trace,
@@ -141,6 +143,7 @@ fn build_ipc() {
             commands::frontend_warn,
             commands::frontend_error,
             commands::get_settings,
+            commands::get_platform,
             commands::save_settings,
             commands::hide_settings_window,
         ])

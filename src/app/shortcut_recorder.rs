@@ -3,6 +3,7 @@ use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
 
 use crate::ipc::frontend_debug;
+use crate::ipc::get_platform;
 
 #[component]
 pub fn ShortcutRecorder(
@@ -10,6 +11,19 @@ pub fn ShortcutRecorder(
     set_value: WriteSignal<String>,
 ) -> impl IntoView {
     let (recording, set_recording) = signal(false);
+    let platform = LocalResource::new(move || async { get_platform().await.unwrap() });
+
+    let shortcut_name_for_display = move || {
+        let shortcut = value.get();
+        let Some(platform) = platform.get() else {
+            return shortcut;
+        };
+        match platform.as_str() {
+            "macos" => value.get().replace("CmdOrCtrl", "Cmd"),
+            "windows" | "linux" => shortcut.replace("CmdOrCtrl", "Ctrl"),
+            _ => shortcut.to_string(),
+        }
+    };
 
     let handle_keydown = move |ev: web_sys::KeyboardEvent| {
         ev.prevent_default();
@@ -84,7 +98,7 @@ pub fn ShortcutRecorder(
                     "Press shortcut…".to_string()
                 } else {
                     let v = value.get();
-                    if v.is_empty() { "Click to record…".to_string() } else { v }
+                    if v.is_empty() { "Click to record…".to_string() } else { shortcut_name_for_display() }
                 }
             }
             on:focus=move |_| set_recording.set(true)
