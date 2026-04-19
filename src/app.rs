@@ -4,13 +4,11 @@ use henry_whisper_shared::{AppSettings, ShortcutSetting, TranscriptionModelSetti
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
-use wasm_bindgen::prelude::*;
 
-use crate::app::ipc::debug_log;
-use crate::app::ipc::error_log;
-use crate::app::ipc::info_log;
-use crate::app::ipc::invoke;
-use crate::app::ipc::warn_log;
+use crate::app::ipc::{
+    frontend_debug, frontend_error, frontend_info, frontend_warn, get_settings,
+    hide_settings_window, save_settings,
+};
 
 #[component]
 fn ShortcutRecorder(value: ReadSignal<String>, set_value: WriteSignal<String>) -> impl IntoView {
@@ -124,11 +122,9 @@ fn persist_settings(
     on_saved: impl FnOnce() + 'static,
 ) {
     spawn_local(async move {
-        let args =
-            serde_wasm_bindgen::to_value(&serde_json::json!({ "settings": settings })).unwrap();
-        match invoke("save_settings", args).await {
-            Ok(_) => {
-                let _ = debug_log("settings saved").await;
+        match save_settings(settings.clone()).await {
+            Ok(()) => {
+                let _ = frontend_debug("settings saved").await;
                 if save_request_id.get_untracked() == request_id {
                     set_last_saved.set(Some(settings));
                     on_saved();
@@ -136,7 +132,7 @@ fn persist_settings(
             }
             Err(e) => {
                 let msg = e.as_string().unwrap_or("Error saving settings".into());
-                let _ = error_log(&format!("failed to save settings: {msg}")).await;
+                let _ = frontend_error(&format!("failed to save settings: {msg}")).await;
                 if save_request_id.get_untracked() == request_id {
                     set_error.set(Some(msg));
                 }
@@ -165,10 +161,10 @@ pub fn App() -> impl IntoView {
     // Load settings on mount
     Effect::new(move |_| {
         spawn_local(async move {
-            let _ = debug_log("requesting settings").await;
-            if let Ok(val) = invoke("get_settings", JsValue::NULL).await {
-                if let Ok(s) = serde_wasm_bindgen::from_value::<AppSettings>(val) {
-                    let _ = info_log("settings loaded").await;
+            let _ = frontend_debug("requesting settings").await;
+            match get_settings().await {
+                Ok(s) => {
+                    let _ = frontend_info("settings loaded").await;
                     set_last_saved.set(Some(s.clone()));
                     set_model_base_url.set(s.transcription_model.base_url);
                     set_model_name.set(s.transcription_model.model);
@@ -177,8 +173,9 @@ pub fn App() -> impl IntoView {
                     set_play_sound.set(s.play_sound);
                     set_loaded.set(true);
                 }
-            } else {
-                let _ = warn_log("get_settings invoke failed").await;
+                Err(_) => {
+                    let _ = frontend_warn("get_settings invoke failed").await;
+                }
             }
         });
     });
@@ -246,13 +243,13 @@ pub fn App() -> impl IntoView {
                 set_last_saved,
                 || {
                     spawn_local(async move {
-                        let _ = invoke("hide_settings_window", JsValue::NULL).await;
+                        let _ = hide_settings_window().await;
                     });
                 },
             );
         } else {
             spawn_local(async move {
-                let _ = invoke("hide_settings_window", JsValue::NULL).await;
+                let _ = hide_settings_window().await;
             });
         }
     };

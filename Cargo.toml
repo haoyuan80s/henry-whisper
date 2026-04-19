@@ -19,11 +19,13 @@ henry-whisper-shared = { workspace = true }
 
 [workspace.dependencies]
 henry-whisper-shared = { path = "shared" }
+henry-whisper-macros = { path = "macros" }
+henry-whisper-ipc-gen = { path = "ipc-gen" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [workspace]
-members = ["shared", "src-tauri"]
+members = ["shared", "macros", "ipc-gen", "src-tauri"]
 
 [profile.dev]
 opt-level = 1

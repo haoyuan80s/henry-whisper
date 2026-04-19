@@ -125,3 +125,25 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[test]
+fn build_ipc() {
+    use henry_whisper_ipc_gen::IpcBuilder;
+    use henry_whisper_macros::collect_commands;
+
+    #[cfg(debug_assertions)]
+    IpcBuilder::new()
+        .header("use henry_whisper_shared::AppSettings;")
+        .commands(collect_commands![
+            commands::frontend_trace,
+            commands::frontend_debug,
+            commands::frontend_info,
+            commands::frontend_warn,
+            commands::frontend_error,
+            commands::get_settings,
+            commands::save_settings,
+            commands::hide_settings_window,
+        ])
+        .export("../src/app/ipc_generated.rs")
+        .expect("failed to write ipc_generated.rs");
+}

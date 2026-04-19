@@ -1,3 +1,4 @@
+pub use henry_whisper_macros::tauri_commands;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]

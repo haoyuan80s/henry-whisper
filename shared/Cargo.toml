@@ -6,3 +6,4 @@ license = "Apache-2.0"
 
 [dependencies]
 serde = { workspace = true }
+henry-whisper-macros = { workspace = true }

@@ -1,3 +1,4 @@
+use henry_whisper_macros::ipc_command;
 use tauri::Manager;
 
 use crate::ai::AiModel;
@@ -7,36 +8,43 @@ use super::settings::persist_settings;
 use super::shortcuts::register_shortcuts;
 use super::state::AppState;
 
+#[ipc_command]
 #[tauri::command]
 pub fn frontend_trace(message: String) {
     tracing::trace!("frontend: {}", message);
 }
 
+#[ipc_command]
 #[tauri::command]
 pub fn frontend_debug(message: String) {
     tracing::debug!("frontend: {}", message);
 }
 
+#[ipc_command]
 #[tauri::command]
 pub fn frontend_info(message: String) {
     tracing::info!("frontend: {}", message);
 }
 
+#[ipc_command]
 #[tauri::command]
 pub fn frontend_warn(message: String) {
     tracing::warn!("frontend: {}", message);
 }
 
+#[ipc_command]
 #[tauri::command]
 pub fn frontend_error(message: String) {
     tracing::error!("frontend: {}", message);
 }
 
+#[ipc_command]
 #[tauri::command]
 pub fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
     state.settings.lock().unwrap().clone()
 }
 
+#[ipc_command]
 #[tauri::command]
 pub fn save_settings(
     app: tauri::AppHandle,
@@ -52,14 +60,13 @@ pub fn save_settings(
     *state.settings.lock().unwrap() = settings.clone();
     *state.model.lock().unwrap() = model;
     persist_settings(&app, &settings)?;
-    // Re-register shortcuts on the async runtime so we don't block the IPC
-    // response (macOS Carbon APIs dispatch to the main thread internally).
     tauri::async_runtime::spawn(async move {
         register_shortcuts(&app, &shortcut_setting);
     });
     Ok(())
 }
 
+#[ipc_command]
 #[tauri::command]
 pub fn hide_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
