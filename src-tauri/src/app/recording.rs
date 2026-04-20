@@ -12,6 +12,7 @@ use tauri::Manager;
 use super::state::AppState;
 use super::state::RecordingHandle;
 use super::tray::set_tray_title;
+use crate::app::tray::TrayTitleGuard;
 use crate::audio::SoundEffect;
 use crate::audio::encode_transcription_mp3;
 use crate::audio::play_sound;
@@ -113,6 +114,7 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
 }
 
 pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
+    let _title_guard = TrayTitleGuard::new(&app);
     let state = app.state::<AppState>();
     let handle = {
         let mut recording = state.recording.lock().unwrap();
@@ -132,7 +134,6 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
 
     let samples: Vec<f32> = handle.sample_rx.try_iter().flatten().collect();
     if samples.is_empty() {
-        set_tray_title(&app, None);
         return Err(anyhow::anyhow!("No audio captured"));
     }
 
@@ -168,11 +169,9 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     {
         Ok(Ok(t)) => t,
         Ok(Err(err)) => {
-            set_tray_title(&app, None);
             return Err(err);
         }
         Err(_) => {
-            set_tray_title(&app, None);
             return Err(anyhow::anyhow!("Transcription timed out"));
         }
     };
@@ -191,7 +190,6 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     if settings.play_sound {
         play_sound(SoundEffect::Transcribe);
     }
-    set_tray_title(&app, None);
     Ok(())
 }
 
@@ -209,12 +207,12 @@ pub async fn do_record_or_transcribe(app: tauri::AppHandle) -> Result<()> {
 }
 
 pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
+    let _title_guard = TrayTitleGuard::new(&app);
     let state = app.state::<AppState>();
     let handle = {
         let mut recording = state.recording.lock().unwrap();
         recording.take().ok_or("Not currently recording")?
     };
-    set_tray_title(&app, None);
     handle.stop_tx.send(()).ok();
     let _ = tokio::time::timeout(STREAM_STOP_TIMEOUT, handle.join_handle).await;
     let settings = state.settings.lock().unwrap().clone();
