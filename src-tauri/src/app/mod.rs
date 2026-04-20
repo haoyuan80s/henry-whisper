@@ -18,7 +18,6 @@ use tauri::tray::TrayIconBuilder;
 use crate::ai::AiModel;
 use recording::do_cancel_recording;
 use recording::do_record_or_transcribe;
-use tray::DEFAULT_TRAY_TITLE;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -69,7 +68,6 @@ pub fn run() {
             TrayIconBuilder::with_id("main")
                 .icon(tray_icon)
                 .icon_as_template(true)
-                .title(DEFAULT_TRAY_TITLE)
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
