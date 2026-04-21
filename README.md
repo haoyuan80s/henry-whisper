@@ -2,6 +2,18 @@
 
 Tiny Tauri desktop dictation app: record from the tray, transcribe with an OpenAI-compatible audio endpoint, and copy the result straight to the clipboard.
 
+## Why
+
+Writing should stay in flow. Most voice tools pull you into a different app, make you wait through extra clicks, or trap your words in their own interface.
+
+Henry Whisper exists to do one job with less ceremony:
+
+- start recording from anywhere
+- turn speech into text with your own OpenAI-compatible endpoint
+- put the transcript directly on your clipboard so you can keep moving
+
+The goal is not a full note-taking system. The goal is fast capture with as little friction as possible.
+
 ## Run
 
 ### Dev
