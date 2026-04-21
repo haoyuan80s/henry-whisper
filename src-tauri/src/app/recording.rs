@@ -2,6 +2,12 @@ use anyhow::Result;
 use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 use cpal::traits::StreamTrait;
+use enigo::{
+    Direction,
+    Direction::{Click, Press, Release},
+    Enigo, Key, Keyboard, Settings,
+};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -28,6 +34,35 @@ const TRANSCRIPTION_TIMEOUT: Duration = Duration::from_secs(60);
 fn rms(data: &[f32]) -> f32 {
     let sum = data.iter().map(|x| x * x).sum::<f32>();
     (sum / data.len() as f32).sqrt()
+}
+
+fn paste_modifier() -> Key {
+    if cfg!(target_os = "macos") {
+        Key::Meta
+    } else {
+        Key::Control
+    }
+}
+
+fn send_key(enigo: &mut Enigo, key: Key, direction: Direction) -> Result<()> {
+    catch_unwind(AssertUnwindSafe(|| enigo.key(key, direction)))
+        .map_err(|_| anyhow::anyhow!("Input simulation panicked"))??;
+    Ok(())
+}
+
+fn paste_clipboard() -> Result<()> {
+    let mut enigo = Enigo::new(&Settings::default())?;
+    let modifier = paste_modifier();
+
+    send_key(&mut enigo, modifier, Press)?;
+    std::thread::sleep(Duration::from_millis(20));
+    let paste_result = send_key(&mut enigo, Key::Unicode('v'), Click);
+    std::thread::sleep(Duration::from_millis(20));
+    let release_result = send_key(&mut enigo, modifier, Release);
+
+    paste_result?;
+    release_result?;
+    Ok(())
 }
 
 pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
@@ -186,6 +221,12 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         .lock()
         .expect("lock clipboard")
         .set_text(transcript)?;
+
+    if settings.auto_paste {
+        if let Err(err) = paste_clipboard() {
+            tracing::warn!("Auto-paste failed: {err}");
+        }
+    }
 
     if settings.play_sound {
         play_sound(SoundEffect::Transcribe);

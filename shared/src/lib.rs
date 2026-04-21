@@ -6,6 +6,8 @@ pub struct AppSettings {
     pub transcription_model: TranscriptionModelSetting,
     pub shortcut: ShortcutSetting,
     pub play_sound: bool,
+    #[serde(default)]
+    pub auto_paste: bool,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]

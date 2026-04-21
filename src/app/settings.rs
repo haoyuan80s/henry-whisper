@@ -10,6 +10,7 @@ pub fn current_settings(
     rec_shortcut: ReadSignal<String>,
     cancel_shortcut: ReadSignal<String>,
     play_sound: ReadSignal<bool>,
+    auto_paste: ReadSignal<bool>,
 ) -> AppSettings {
     AppSettings {
         transcription_model: TranscriptionModelSetting {
@@ -21,6 +22,7 @@ pub fn current_settings(
             cancel: cancel_shortcut.get(),
         },
         play_sound: play_sound.get(),
+        auto_paste: auto_paste.get(),
     }
 }
 

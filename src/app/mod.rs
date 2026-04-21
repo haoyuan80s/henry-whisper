@@ -19,6 +19,7 @@ pub fn App() -> impl IntoView {
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
     let (play_sound, set_play_sound) = signal(true);
+    let (auto_paste, set_auto_paste) = signal(false);
     let (error, set_error) = signal(None::<String>);
     let (loaded, set_loaded) = signal(false);
     let (last_saved, set_last_saved) = signal(None::<AppSettings>);
@@ -36,6 +37,7 @@ pub fn App() -> impl IntoView {
                     set_rec_shortcut.set(s.shortcut.recording);
                     set_cancel_shortcut.set(s.shortcut.cancel);
                     set_play_sound.set(s.play_sound);
+                    set_auto_paste.set(s.auto_paste);
                     set_loaded.set(true);
                 }
                 Err(_) => {
@@ -74,6 +76,7 @@ pub fn App() -> impl IntoView {
             rec_shortcut,
             cancel_shortcut,
             play_sound,
+            auto_paste,
         );
 
         if last_saved.get().as_ref() == Some(&settings) {
@@ -90,6 +93,7 @@ pub fn App() -> impl IntoView {
             rec_shortcut,
             cancel_shortcut,
             play_sound,
+            auto_paste,
         );
 
         if loaded.get_untracked() && last_saved.get_untracked().as_ref() != Some(&settings) {
@@ -158,6 +162,18 @@ pub fn App() -> impl IntoView {
                         type="checkbox"
                         prop:checked=move || play_sound.get()
                         on:change=move |ev| set_play_sound.set(event_target_checked(&ev))
+                    />
+                    <span class="toggle-track"></span>
+                </label>
+            </div>
+
+            <div class="field toggle-field">
+                <label class="label">"Paste transcript automatically"</label>
+                <label class="toggle">
+                    <input
+                        type="checkbox"
+                        prop:checked=move || auto_paste.get()
+                        on:change=move |ev| set_auto_paste.set(event_target_checked(&ev))
                     />
                     <span class="toggle-track"></span>
                 </label>
