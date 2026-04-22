@@ -199,10 +199,16 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         .expect("lock clipboard")
         .set_text(transcript)?;
 
-    if settings.auto_paste
-        && let Err(err) = paste_clipboard()
-    {
-        tracing::warn!("Auto-paste failed: {err}");
+    if settings.auto_paste {
+        // TSMGetInputSourceProperty (used by enigo) requires the main thread on macOS.
+        // Dispatch paste to the main thread to avoid EXC_BREAKPOINT crash.
+        if let Err(err) = app.run_on_main_thread(|| {
+            if let Err(e) = paste_clipboard() {
+                tracing::warn!("Auto-paste failed: {e}");
+            }
+        }) {
+            tracing::warn!("Failed to dispatch paste to main thread: {err}");
+        }
     }
 
     if settings.play_sound {
