@@ -9,7 +9,6 @@ use enigo::{
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -24,11 +23,7 @@ use crate::audio::encode_transcription_mp3;
 use crate::audio::play_sound;
 
 const VOICE_THRESHOLD: f32 = 0.0001;
-/// How long to wait for the first voice chunk before starting anyway.
-const WARMUP_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long to wait for the audio thread to exit after stopping.
 const STREAM_STOP_TIMEOUT: Duration = Duration::from_secs(3);
-/// How long to wait for the transcription API.
 const TRANSCRIPTION_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn rms(data: &[f32]) -> f32 {
@@ -83,31 +78,35 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
     let channels = config.channels() as u16;
     let (sample_tx, sample_rx) = crossbeam_channel::unbounded::<Vec<f32>>();
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<()>>();
-
-    // Shared flag so we can force-start after the warmup timeout.
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancelled_cb = cancelled.clone();
     let warmed_up = Arc::new(AtomicBool::new(false));
     let warmed_up_cb = warmed_up.clone();
 
-    let join_handle = tokio::task::spawn_blocking(move || {
-        let ready_tx = Mutex::new(Some(ready_tx));
+    let settings = state.settings.lock().expect("lock settings").clone();
+    let is_play_sound = settings.play_sound;
 
+    let join_handle = tokio::task::spawn_blocking(move || {
         let stream = device
             .build_input_stream(
                 &config.into(),
                 move |data: &[f32], _| {
+                    if cancelled_cb.load(Ordering::Relaxed) {
+                        tracing::debug!("Audio callback: cancelled, ignoring data");
+                        return;
+                    }
+                    tracing::trace!("Audio callback: received {} samples", data.len());
                     if !warmed_up_cb.load(Ordering::Relaxed) {
                         if rms(data) < VOICE_THRESHOLD {
                             return;
+                        }
+                        if is_play_sound {
+                            play_sound(SoundEffect::Record);
                         }
                         warmed_up_cb.store(true, Ordering::Relaxed);
                     }
 
                     let _ = sample_tx.send(data.to_vec());
-
-                    if let Some(tx) = ready_tx.lock().unwrap().take() {
-                        let _ = tx.send(Ok(()));
-                    }
                 },
                 |err| eprintln!("Stream error: {err}"),
                 None,
@@ -118,31 +117,14 @@ pub async fn do_start_recording(app: tauri::AppHandle) -> Result<()> {
         drop(stream);
     });
 
-    match tokio::time::timeout(WARMUP_TIMEOUT, ready_rx).await {
-        Ok(Ok(Ok(()))) => {}             // got voice, normal path
-        Ok(Ok(Err(e))) => return Err(e), // stream setup failed
-        Ok(Err(_)) => return Err(anyhow::anyhow!("Audio stream thread exited unexpectedly")),
-        Err(_) => {
-            // Timeout: no voice detected yet — force the warmup flag so the
-            // callback starts forwarding samples from now on and proceed.
-            tracing::warn!("No voice detected within {WARMUP_TIMEOUT:?}, starting anyway");
-            warmed_up.store(true, Ordering::Relaxed);
-        }
-    }
-
     *state.recording.lock().unwrap() = Some(RecordingHandle {
         sample_rx,
         stop_tx,
         join_handle,
         sample_rate,
+        cancelled,
         channels,
     });
-
-    let settings = state.settings.lock().expect("lock settings").clone();
-
-    if settings.play_sound {
-        play_sound(SoundEffect::Record);
-    }
 
     set_tray_title(&app, Some("Recording..."));
     Ok(())
@@ -195,21 +177,16 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
     let now = std::time::Instant::now();
     let settings = state.settings.lock().unwrap().clone();
     let model = state.model.lock().unwrap().clone();
-    let transcript = match tokio::time::timeout(
-        TRANSCRIPTION_TIMEOUT,
-        // model.transcribe_mp3_with_prompt(include_str!("./transcribe_and_post.md"), mp3_bytes),
-        model.transcribe_mp3(mp3_bytes),
-    )
-    .await
-    {
-        Ok(Ok(t)) => t,
-        Ok(Err(err)) => {
-            return Err(err);
-        }
-        Err(_) => {
-            return Err(anyhow::anyhow!("Transcription timed out"));
-        }
-    };
+    let transcript =
+        match tokio::time::timeout(TRANSCRIPTION_TIMEOUT, model.transcribe_mp3(mp3_bytes)).await {
+            Ok(Ok(t)) => t,
+            Ok(Err(err)) => {
+                return Err(err);
+            }
+            Err(_) => {
+                return Err(anyhow::anyhow!("Transcription timed out"));
+            }
+        };
     let elapsed = now.elapsed();
     tracing::debug!(
         "Single-model transcription completed in {:.2?}: {transcript}",
@@ -222,10 +199,10 @@ pub async fn do_stop_and_transcribe(app: tauri::AppHandle) -> Result<()> {
         .expect("lock clipboard")
         .set_text(transcript)?;
 
-    if settings.auto_paste {
-        if let Err(err) = paste_clipboard() {
-            tracing::warn!("Auto-paste failed: {err}");
-        }
+    if settings.auto_paste
+        && let Err(err) = paste_clipboard()
+    {
+        tracing::warn!("Auto-paste failed: {err}");
     }
 
     if settings.play_sound {
@@ -254,6 +231,8 @@ pub async fn do_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
         let mut recording = state.recording.lock().unwrap();
         recording.take().ok_or("Not currently recording")?
     };
+    tracing::debug!("Cancelling recording");
+    handle.cancelled.store(true, Ordering::Relaxed);
     handle.stop_tx.send(()).ok();
     let _ = tokio::time::timeout(STREAM_STOP_TIMEOUT, handle.join_handle).await;
     let settings = state.settings.lock().unwrap().clone();

@@ -10,6 +10,7 @@ pub struct RecordingHandle {
     pub stop_tx: tokio::sync::oneshot::Sender<()>,
     pub join_handle: tokio::task::JoinHandle<()>,
     pub sample_rate: u32,
+    pub cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub channels: u16,
 }
 
