@@ -12,12 +12,13 @@ pub struct AiModel {
 }
 
 impl AiModel {
-    pub fn new(base_url: &str, model: &str) -> Self {
-        let config = OpenAIConfig::new().with_api_base(base_url);
+    pub fn new() -> Self {
+        let config = OpenAIConfig::new()
+            .with_api_base("https://lulu.gooseread.com/v1");
         let client = Client::with_config(config);
         Self {
             client,
-            model: model.to_string(),
+            model: "CohereLabs/cohere-transcribe-03-2026".to_string(),
         }
     }
 

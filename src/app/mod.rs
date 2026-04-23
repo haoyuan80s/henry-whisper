@@ -14,8 +14,6 @@ use crate::ipc::{
 
 #[component]
 pub fn App() -> impl IntoView {
-    let (model_base_url, set_model_base_url) = signal(String::new());
-    let (model_name, set_model_name) = signal(String::new());
     let (rec_shortcut, set_rec_shortcut) = signal(String::new());
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
     let (play_sound, set_play_sound) = signal(true);
@@ -32,8 +30,6 @@ pub fn App() -> impl IntoView {
                 Ok(s) => {
                     let _ = frontend_info("settings loaded").await;
                     set_last_saved.set(Some(s.clone()));
-                    set_model_base_url.set(s.transcription_model.base_url);
-                    set_model_name.set(s.transcription_model.model);
                     set_rec_shortcut.set(s.shortcut.recording);
                     set_cancel_shortcut.set(s.shortcut.cancel);
                     set_play_sound.set(s.play_sound);
@@ -71,8 +67,6 @@ pub fn App() -> impl IntoView {
         }
 
         let settings = current_settings(
-            model_base_url,
-            model_name,
             rec_shortcut,
             cancel_shortcut,
             play_sound,
@@ -88,8 +82,6 @@ pub fn App() -> impl IntoView {
 
     let close = move |_| {
         let settings = current_settings(
-            model_base_url,
-            model_name,
             rec_shortcut,
             cancel_shortcut,
             play_sound,
@@ -122,28 +114,6 @@ pub fn App() -> impl IntoView {
     view! {
         <div class="settings">
             <h1 class="settings-title">"Henry Whisper"</h1>
-
-            <div class="field">
-                <label class="label">"Model Base URL"</label>
-                <input
-                    class="input"
-                    type="text"
-                    placeholder="https://gemini.gooseread.com/v1"
-                    prop:value=move || model_base_url.get()
-                    on:input=move |ev| set_model_base_url.set(event_target_value(&ev))
-                />
-            </div>
-
-            <div class="field">
-                <label class="label">"Model"</label>
-                <input
-                    class="input"
-                    type="text"
-                    placeholder="google/gemma-4-E4B-it"
-                    prop:value=move || model_name.get()
-                    on:input=move |ev| set_model_name.set(event_target_value(&ev))
-                />
-            </div>
 
             <div class="field">
                 <label class="label">"Record / Transcribe Shortcut"</label>
