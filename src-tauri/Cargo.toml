@@ -30,7 +30,11 @@ henry-whisper-ipc-gen = { workspace = true }
 cpal = "0.17.3"
 hound = "3.5.1"
 mp3lame-encoder = "0.2.3"
-async-openai = { version = "0.35.0", features = ["audio"] }
+async-openai = { version = "0.36.0", features = [
+  "audio",
+  "byot",
+  "chat-completion",
+] }
 reqwest = { version = "0.13.2", default-features = false, features = [
   "multipart",
 ] }

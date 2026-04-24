@@ -13,12 +13,17 @@ pub struct AiModel {
 
 impl AiModel {
     pub fn new() -> Self {
-        let config = OpenAIConfig::new()
-            .with_api_base("https://lulu.gooseread.com/v1");
+        // let config = OpenAIConfig::new().with_api_base("https://lulu.gooseread.com/v1");
+        // let client = Client::with_config(config);
+        // Self {
+        //     client,
+        //     model: "CohereLabs/cohere-transcribe-03-2026".to_string(),
+        // }
+        let config = OpenAIConfig::new().with_api_base("https://henry.gooseread.com/v1");
         let client = Client::with_config(config);
         Self {
             client,
-            model: "CohereLabs/cohere-transcribe-03-2026".to_string(),
+            model: "Qwen/Qwen3-ASR-1.7B".to_string(),
         }
     }
 
