@@ -1,61 +1,42 @@
 # Henry Whisper
 
-Tiny Tauri desktop dictation app: record from the tray, transcribe with an OpenAI-compatible audio endpoint, and copy the result straight to the clipboard.
+Tray-first desktop dictation app built with Tauri.
 
-## Why
+- Record from anywhere
+- Transcribe with any OpenAI-compatible API
+- Copy the transcript to the clipboard automatically
 
-Writing should stay in flow. Most voice tools pull you into a different app, make you wait through extra clicks, or trap your words in their own interface.
+## Compatible APIs
 
-Henry Whisper exists to do one job with less ceremony:
+Henry Whisper works with OpenAI-compatible endpoints that support chat completions with audio input.
 
-- start recording from anywhere
-- turn speech into text with your own OpenAI-compatible endpoint
-- put the transcript directly on your clipboard so you can keep moving
+Example: OpenRouter
 
-The goal is not a full note-taking system. The goal is fast capture with as little friction as possible.
+- `AI Base URL`: `https://openrouter.ai/api/v1`
+- `AI Model`: `google/gemini-2.5-flash-preview`
+- `AI API Key`: your OpenRouter key
 
 ## Run
 
-### Dev
-
 ```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-cargo install tauri-cli --locked
-cargo install trunk
-rustup target add wasm32-unknown-unknown
 cargo tauri dev
 ```
 
-### Build app
-
-Build a release with:
+## Build
 
 ```sh
 cargo tauri build
 ```
 
-## Use
+## Defaults
 
-- `Ctrl+1`: start recording, then stop and transcribe
-- `Ctrl+2`: cancel recording
-- Open Settings from the tray to change the endpoint, model, shortcuts, and sound cues
-
-Default transcription config:
-
-- Base URL: `https://lulu.gooseread.com/v1`
-- Model: `CohereLabs/cohere-transcribe-03-2026`
+- Record / Transcribe: `Ctrl+1`
+- Cancel: `Ctrl+2`
 
 ## Notes
 
-- The app stores settings in the app config directory as `settings.json`
-- The first recording may trigger microphone permission prompts
-- Transcripts are copied to the clipboard; no transcript history is stored
-- If your endpoint requires auth, set the appropriate API key in the environment before launch
-
-## Todo
-
-- [ ] polish model
-- [ ] test on window/linux
+- Settings are stored in `settings.json` under the app config directory.
+- The app keeps no transcript history.
 
 ## License
 

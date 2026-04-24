@@ -9,6 +9,9 @@ pub fn current_settings(
     cancel_shortcut: ReadSignal<String>,
     play_sound: ReadSignal<bool>,
     auto_paste: ReadSignal<bool>,
+    ai_model: ReadSignal<String>,
+    ai_api_base: ReadSignal<String>,
+    ai_api_key: ReadSignal<String>,
 ) -> AppSettings {
     AppSettings {
         shortcut: ShortcutSetting {
@@ -17,6 +20,9 @@ pub fn current_settings(
         },
         play_sound: play_sound.get(),
         auto_paste: auto_paste.get(),
+        ai_model: ai_model.get(),
+        ai_api_base: ai_api_base.get(),
+        ai_api_key: ai_api_key.get(),
     }
 }
 

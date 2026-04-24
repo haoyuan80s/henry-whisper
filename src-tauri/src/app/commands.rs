@@ -5,6 +5,7 @@ use super::settings::AppSettings;
 use super::settings::persist_settings;
 use super::shortcuts::register_shortcuts;
 use super::state::AppState;
+use crate::ai::AiModel;
 
 #[ipc_command]
 #[tauri::command]
@@ -50,8 +51,10 @@ pub fn save_settings(
     settings: AppSettings,
 ) -> Result<(), String> {
     let shortcut_setting = settings.shortcut.clone();
+    let model = AiModel::from_settings(&settings);
 
     *state.settings.lock().unwrap() = settings.clone();
+    *state.model.lock().unwrap() = model;
     persist_settings(&app, &settings)?;
     tauri::async_runtime::spawn(async move {
         register_shortcuts(&app, &shortcut_setting);

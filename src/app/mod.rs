@@ -18,6 +18,9 @@ pub fn App() -> impl IntoView {
     let (cancel_shortcut, set_cancel_shortcut) = signal(String::new());
     let (play_sound, set_play_sound) = signal(true);
     let (auto_paste, set_auto_paste) = signal(false);
+    let (ai_model, set_ai_model) = signal(String::new());
+    let (ai_api_base, set_ai_api_base) = signal(String::new());
+    let (ai_api_key, set_ai_api_key) = signal(String::new());
     let (error, set_error) = signal(None::<String>);
     let (loaded, set_loaded) = signal(false);
     let (last_saved, set_last_saved) = signal(None::<AppSettings>);
@@ -34,6 +37,9 @@ pub fn App() -> impl IntoView {
                     set_cancel_shortcut.set(s.shortcut.cancel);
                     set_play_sound.set(s.play_sound);
                     set_auto_paste.set(s.auto_paste);
+                    set_ai_model.set(s.ai_model);
+                    set_ai_api_base.set(s.ai_api_base);
+                    set_ai_api_key.set(s.ai_api_key);
                     set_loaded.set(true);
                 }
                 Err(_) => {
@@ -71,6 +77,9 @@ pub fn App() -> impl IntoView {
             cancel_shortcut,
             play_sound,
             auto_paste,
+            ai_model,
+            ai_api_base,
+            ai_api_key,
         );
 
         if last_saved.get().as_ref() == Some(&settings) {
@@ -86,6 +95,9 @@ pub fn App() -> impl IntoView {
             cancel_shortcut,
             play_sound,
             auto_paste,
+            ai_model,
+            ai_api_base,
+            ai_api_key,
         );
 
         if loaded.get_untracked() && last_saved.get_untracked().as_ref() != Some(&settings) {
@@ -147,6 +159,36 @@ pub fn App() -> impl IntoView {
                     />
                     <span class="toggle-track"></span>
                 </label>
+            </div>
+
+            <div class="field">
+                <label class="label">"AI Model"</label>
+                <input
+                    class="input"
+                    type="text"
+                    prop:value=move || ai_model.get()
+                    on:input=move |ev| set_ai_model.set(event_target_value(&ev))
+                />
+            </div>
+
+            <div class="field">
+                <label class="label">"AI Base URL"</label>
+                <input
+                    class="input"
+                    type="text"
+                    prop:value=move || ai_api_base.get()
+                    on:input=move |ev| set_ai_api_base.set(event_target_value(&ev))
+                />
+            </div>
+
+            <div class="field">
+                <label class="label">"AI API Key"</label>
+                <input
+                    class="input"
+                    type="password"
+                    prop:value=move || ai_api_key.get()
+                    on:input=move |ev| set_ai_api_key.set(event_target_value(&ev))
+                />
             </div>
 
             {move || error.get().map(|e| view! {
