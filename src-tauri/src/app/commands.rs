@@ -1,4 +1,4 @@
-use henry_whisper_macros::ipc_command;
+use henry_whisper_ipc_gen::ipc_command;
 use tauri::Manager;
 
 use super::settings::AppSettings;

@@ -1,3 +1,5 @@
+pub use henry_whisper_macros::*;
+
 /// Metadata about a single Tauri IPC command, captured by `#[ipc_command]`.
 pub struct CommandMeta {
     pub name: &'static str,
